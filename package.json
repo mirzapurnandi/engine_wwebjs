@@ -1,0 +1,41 @@
+{
+  "name": "wwebjs",
+  "version": "1.0.0",
+  "description": "Create Server Engine Whatsapp connect to web nodejs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --no-deprecation index.js",
+    "startDev": "nodemon --exec 'node --no-deprecation' index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mirzapurnandi/wwebjs.git"
+  },
+  "keywords": [
+    "whatsApp",
+    "server",
+    "engine",
+    "nodejs"
+  ],
+  "author": "Mirza Purnandi",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mirzapurnandi/wwebjs/issues"
+  },
+  "homepage": "https://github.com/mirzapurnandi/wwebjs#readme",
+  "dependencies": {
+    "axios": "^1.10.0",
+    "dotenv": "^17.2.0",
+    "events": "^3.3.0",
+    "express": "^5.1.0",
+    "mongoose": "^8.16.3",
+    "qrcode": "^1.5.4",
+    "sqlite3": "^5.1.7",
+    "uuid": "^11.1.0",
+    "whatsapp-web.js": "github:BenyFilho/whatsapp-web.js#fix_event_ready",
+    "wwebjs-mongo": "^1.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
