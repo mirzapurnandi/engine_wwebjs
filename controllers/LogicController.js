@@ -23,6 +23,8 @@ var emitter = require("events").EventEmitter;
 var eventLocal = new emitter();
 
 let dataClient = [];
+var webHookURL =
+    process.env.HOST_WEBHOOK || "https://server.wasend.id/api/dlr/listen-dlr";
 
 class LogicController {
     constructor() {
@@ -338,7 +340,7 @@ class LogicController {
                 //send notify webhook
                 const state = "DISCONNECT";
                 sendWebHook(
-                    process.env.HOST_WEBHOOK,
+                    webHookURL,
                     bodyData.id_instance,
                     "INSTANCE",
                     state
@@ -384,12 +386,7 @@ class LogicController {
             deleteFolderSWCache(idInstance);
 
             const state = "DISCONNECT";
-            sendWebHook(
-                process.env.HOST_WEBHOOK,
-                idInstance,
-                "INSTANCE",
-                state
-            );
+            sendWebHook(webHookURL, idInstance, "INSTANCE", state);
 
             //client[idInstance].destroy();
             client[idInstance].initialize();
@@ -446,12 +443,7 @@ class LogicController {
 
                         //notify ready to scan
                         state = "READY_SCAN";
-                        sendWebHook(
-                            process.env.HOST_WEBHOOK,
-                            idInstance,
-                            "INSTANCE",
-                            state
-                        );
+                        sendWebHook(webHookURL, idInstance, "INSTANCE", state);
 
                         console.log(
                             dateTime +
@@ -498,12 +490,7 @@ class LogicController {
                         },
                     });
 
-                    sendWebHook(
-                        process.env.HOST_WEBHOOK,
-                        idInstance,
-                        "INSTANCE",
-                        result
-                    );
+                    sendWebHook(webHookURL, idInstance, "INSTANCE", result);
                     console.log(
                         dateTime +
                             " [+] GET INSTANCE STATUS : " +

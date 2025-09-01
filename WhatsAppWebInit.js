@@ -22,9 +22,9 @@ var eventLocal = new emitter();
 let client = {};
 var webHookURL =
     process.env.HOST_WEBHOOK || "https://server.wasend.id/api/dlr/listen-dlr";
-var authToken = process.env.AUTH_TOKEN;
+var authToken = process.env.AUTH_TOKEN || "PuRn4nD1990";
 var autoStartInstance = false;
-MONGODB_URI = process.env.MONGODB_URI;
+MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/db_engine";
 
 const initialize = async (uuid, isOpen = false) => {
     /* let authType = new LocalAuth({ clientId: uuid });

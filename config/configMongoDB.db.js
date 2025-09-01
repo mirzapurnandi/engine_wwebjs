@@ -2,7 +2,8 @@ const { MongoClient } = require("mongodb");
 
 class MongoDBConnection {
     constructor() {
-        this.url = process.env.MONGODB_URI || "mongodb://localhost:27017";
+        this.url =
+            process.env.MONGODB_URI || "mongodb://localhost:27017/db_engine";
         this.dbName = "engine";
         this.client = new MongoClient(this.url);
 
