@@ -28,6 +28,7 @@ const initialize = async (uuid, autoStart = false) => {
                 "--no-first-run",
                 "--no-zygote",
                 "--disable-gpu",
+                `--user-data-dir=/var/www/engine_wwebjs/chrome_profiles/${uuid}`, // 👈 penting
             ],
         },
         authStrategy: new RemoteAuth({
