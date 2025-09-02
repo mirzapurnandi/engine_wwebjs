@@ -29,10 +29,11 @@
     "events": "^3.3.0",
     "express": "^5.1.0",
     "mongoose": "^8.16.3",
+    "puppeteer": "^24.18.0",
     "qrcode": "^1.5.4",
     "sqlite3": "^5.1.7",
     "uuid": "^11.1.0",
-    "whatsapp-web.js": "github:BenyFilho/whatsapp-web.js#fix_event_ready",
+    "whatsapp-web.js": "^1.33.2",
     "wwebjs-mongo": "^1.1.0"
   },
   "devDependencies": {

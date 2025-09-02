@@ -54,8 +54,19 @@ const initialize = async (uuid, isOpen = false) => {
     client[uuid] = new Client({
         puppeteer: {
             headless: true,
-            executablePath: "/usr/bin/google-chrome",
-            args: ["--no-sandbox", "--disable-setuid-sandbox"],
+            executablePath: "/usr/bin/chromium-browser",
+            // executablePath: "/usr/bin/google-chrome",
+            // args: ["--no-sandbox", "--disable-setuid-sandbox"],
+            args: [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-accelerated-2d-canvas",
+                "--no-first-run",
+                "--no-zygote",
+                // "--single-process", // kadang diperlukan
+                "--disable-gpu",
+            ],
         },
         authStrategy: new RemoteAuth({
             clientId: uuid,
