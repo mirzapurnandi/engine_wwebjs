@@ -371,6 +371,8 @@ async function healthCheck(id) {
             console.log(`[!] ${id} not responding, reinitializing...`);
             client[id].destroy();
             client[id].initialize();
+        } else {
+            console.log(`[OK] ${id}, ${state}`);
         }
     } catch (e) {
         console.log(`[!] Error checking state for ${id}`, e);
@@ -381,7 +383,7 @@ async function healthCheck(id) {
 
 setInterval(() => {
     Object.keys(client).forEach((id) => healthCheck(id));
-}, 80 * 1000);
+}, 50 * 1000);
 
 module.exports = {
     client,
