@@ -1,5 +1,13 @@
 const db = require("../config/configSqlite.db");
-const { client, initialize, sendWebHook } = require("../WhatsAppWebInit");
+const {
+    client,
+    initialize,
+    notifyDisconnect,
+    deleteFolderSession,
+    deleteFile,
+    deleteFolderSWCache,
+    sendWebHook,
+} = require("../WhatsAppWebInit");
 
 const { Buttons, List, MessageMedia } = require("whatsapp-web.js");
 const fs = require("fs");
@@ -9,15 +17,13 @@ var emitter = require("events").EventEmitter;
 var eventLocal = new emitter();
 
 let dataClient = [];
-var webHookURL =
-    process.env.HOST_WEBHOOK || "https://server.wasend.id/api/dlr/listen-dlr";
 
 class LogicController {
     constructor() {
         this.dataClient = dataClient;
     }
 
-    async getAllSession(req, res) {
+    getAllSession = (req, res) => {
         const SELECT_ALL_SESSION = "SELECT * FROM sessions";
         db.all(SELECT_ALL_SESSION, (err, rows) => {
             if (err) {
@@ -35,48 +41,46 @@ class LogicController {
                 });
             }
         });
-    }
+    };
 
-    async createSession(req, res) {
-        try {
-            const id_instance = uuidv4();
-            await initialize(id_instance, true);
+    createSession(req, res) {
+        const id = req.body.id_instance;
 
-            const INSERT_SESSION = `INSERT INTO sessions (id_instance, status) VALUES (?, ?)`;
-            db.run(INSERT_SESSION, [id_instance, "CREATED"]);
-
-            console.log(`[+] New Instance Created: ${id_instance}`);
-            res.status(201).json({
-                code: 201,
-                details: "Instance created",
-                id_instance,
+        db.serialize(async () => {
+            db.run("INSERT INTO sessions VALUES (?)", [id], async (error) => {
+                if (error) {
+                    console.log(error);
+                } else {
+                    await initialize(id);
+                    console.log("[+] Init Instance : " + id);
+                    res.status(201).json({
+                        message: "Session created",
+                        id_instance: id,
+                    });
+                }
             });
-        } catch (error) {
-            console.error("Create instance error:", error);
-            res.status(500).json({
-                code: 500,
-                details: "Internal Server Error",
-                data: error.message,
-            });
-        }
+        });
     }
 
     async deleteSession(req, res) {
         const id_instance = req.params.id_instance;
         const DELETE_SESSION = "DELETE FROM sessions WHERE id_instance = ?";
-        db.run(DELETE_SESSION, [id_instance], async (error) => {
-            if (error) {
-                console.log(error);
-                return res.status(500).json({ message: "DB Error" });
-            }
-            if (client[id_instance]) {
-                await client[id_instance].destroy();
-                delete client[id_instance]; // hapus dari memory
-            }
-            console.log("[-] Delete Instance : " + id_instance);
-            res.status(200).json({
-                message: "Session deleted",
-                id_instance,
+        db.serialize(() => {
+            db.run(DELETE_SESSION, [id_instance], (error) => {
+                if (error) {
+                    console.log(error);
+                } else {
+                    if (dataClient.includes(id_instance)) {
+                        client[id_instance].destroy();
+                        deleteFolderSession(id_instance);
+                    }
+                    console.log("[-] Delete Instance : " + id_instance);
+
+                    res.status(200).json({
+                        message: "Session deleted",
+                        id_instance: id_instance,
+                    });
+                }
             });
         });
     }
@@ -320,22 +324,37 @@ class LogicController {
     };
 
     instanceRedeploy = async (req, res) => {
-        const { id_instance } = req.body;
+        const bodyData = req.body;
         try {
-            if (client[id_instance]) {
-                await client[id_instance].destroy();
-                await initialize(id_instance, true);
-                sendWebHook(webHookURL, id_instance, "INSTANCE", "REDEPLOYED");
-                console.log(`[+] Redeployed Instance: ${id_instance}`);
+            if (dataClient.includes(bodyData.id_instance)) {
+                await client[bodyData.id_instance].destroy();
+
+                //send notify webhook
+                const state = "DISCONNECT";
+                sendWebHook(
+                    process.env.HOST_WEBHOOK,
+                    bodyData.id_instance,
+                    "INSTANCE",
+                    state
+                );
+
+                deleteFolderSession(bodyData.id_instance);
+                deleteFile(
+                    __dirname + "/qr/qr_" + bodyData.id_instance + ".png"
+                );
             }
-            res.status(200).json({
+            //init instance
+            //session(idInstance);
+
+            res.status(200).send({
                 code: 200,
                 details: "Ok",
-                id_instance,
+                data: [],
             });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({
+            console.log(error);
+
+            res.status(500).send({
                 code: 500,
                 details: "Internal Server Error!",
                 data: error,
@@ -344,28 +363,110 @@ class LogicController {
     };
 
     instanceRefresh = async (req, res) => {
-        const { id_instance } = req.body;
+        let dateTime = new Date();
+        const idInstance = req.body.id_instance;
         try {
-            if (client[id_instance]) {
-                await client[id_instance].destroy();
-                await initialize(id_instance, true);
-                console.log(`[+] Refreshed Instance: ${id_instance}`);
-                return res.status(200).json({
-                    code: 200,
-                    details: "Instance refreshed",
-                    id_instance,
-                });
-            }
-            res.status(404).json({
-                code: 404,
-                details: "Instance not found",
+            //if (dataClient.includes(idInstance)) {
+            //send notify webhook
+
+            console.log(
+                dateTime +
+                    " [+] Processing Refresh WA Page, Instance ID : " +
+                    idInstance
+            );
+
+            deleteFolderSWCache(idInstance);
+
+            const state = "DISCONNECT";
+            sendWebHook(
+                process.env.HOST_WEBHOOK,
+                idInstance,
+                "INSTANCE",
+                state
+            );
+
+            //client[idInstance].destroy();
+            client[idInstance].initialize();
+            dataClient.push(idInstance);
+
+            res.status(200).send({
+                code: 200,
+                details: "Processing",
+                data: [],
             });
-        } catch (error) {
-            console.error("Refresh error:", error);
-            res.status(500).json({
+
+            eventLocal.once(idInstance, async function (payload) {
+                if (payload == "ACTIVE") {
+                    try {
+                        console.log(
+                            dateTime +
+                                " [CLEANING] Cleaning WA Page , Instance ID : " +
+                                idInstance
+                        );
+
+                        const mainPage = await client[
+                            idInstance
+                        ].pupBrowser.newPage();
+                        await z.goto("https://web.whatsapp.com", {
+                            waitUntil: "load",
+                            timeout: 0,
+                            referer: "https://whatsapp.com/",
+                        });
+                        console.log(
+                            dateTime +
+                                " [CLEANING] Success Cleaning WA Page, Instance ID : " +
+                                idInstance
+                        );
+                        await sleep(5000);
+
+                        await mainPage.screenshot({
+                            fullPage: true,
+                            path:
+                                __dirname +
+                                "/" +
+                                dirScreenShot +
+                                "/" +
+                                idInstance +
+                                ".png",
+                        });
+
+                        await mainPage.close();
+
+                        //if (dataClient.includes(idInstance)) {
+                        client[idInstance].destroy();
+                        client[idInstance].initialize();
+                        //deleteFolderSWCache(idInstance);
+                        //}
+
+                        //notify ready to scan
+                        state = "READY_SCAN";
+                        sendWebHook(
+                            process.env.HOST_WEBHOOK,
+                            idInstance,
+                            "INSTANCE",
+                            state
+                        );
+
+                        console.log(
+                            dateTime +
+                                " [REFRESH] Success Refresh WA Page, Instance ID : " +
+                                idInstance
+                        );
+                    } catch (e) {
+                        console.log(
+                            dateTime +
+                                " [REFRESH FAILED] Failed Refresh WA Page, Instance ID : " +
+                                idInstance
+                        );
+                    }
+                }
+            });
+            //}
+        } catch (e) {
+            res.status(500).send({
                 code: 500,
                 details: "Internal Server Error",
-                data: error,
+                data: e,
             });
         }
     };
@@ -391,7 +492,12 @@ class LogicController {
                         },
                     });
 
-                    sendWebHook(webHookURL, idInstance, "INSTANCE", result);
+                    sendWebHook(
+                        process.env.HOST_WEBHOOK,
+                        idInstance,
+                        "INSTANCE",
+                        result
+                    );
                     console.log(
                         dateTime +
                             " [+] GET INSTANCE STATUS : " +
