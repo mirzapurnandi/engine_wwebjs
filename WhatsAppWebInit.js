@@ -364,6 +364,25 @@ async function sendWebHook(url, idInstance, type, state = null, data = {}) {
         });
 }
 
+async function healthCheck(id) {
+    try {
+        const state = await client[id].getState();
+        if (!state || state === "DISCONNECTED") {
+            console.log(`[!] ${id} not responding, reinitializing...`);
+            client[id].destroy();
+            client[id].initialize();
+        }
+    } catch (e) {
+        console.log(`[!] Error checking state for ${id}`, e);
+        client[id].destroy();
+        client[id].initialize();
+    }
+}
+
+setInterval(() => {
+    Object.keys(client).forEach((id) => healthCheck(id));
+}, 80 * 1000);
+
 module.exports = {
     client,
     initialize,
