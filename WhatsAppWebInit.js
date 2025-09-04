@@ -63,8 +63,8 @@ const initialize = async (uuid, isOpen = false) => {
     client[uuid] = new Client({
         puppeteer: {
             headless: true,
-            executablePath: "/usr/bin/chromium-browser",
-            // executablePath: "/usr/bin/google-chrome",
+            // executablePath: "/usr/bin/chromium-browser",
+            executablePath: "/usr/bin/google-chrome",
             // args: ["--no-sandbox", "--disable-setuid-sandbox"],
 
             args: [
