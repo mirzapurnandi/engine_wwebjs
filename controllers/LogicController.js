@@ -290,11 +290,21 @@ class LogicController {
 
     getScreenshot = async (req, res) => {
         let dateTime = new Date();
+        let indoTime = dateTime.toLocaleString("id-ID", {
+            weekday: "long", // hari
+            year: "numeric",
+            month: "long", // bulan lengkap
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false, // 24 jam
+        });
         const bodyData = req.query;
 
         try {
             //if(req.headers['x-k1ng-token'] == authToken){
-            console.log(dateTime + " [+] Screenshot : " + bodyData.id_instance);
+            console.log(indoTime + " [+] Screenshot : " + bodyData.id_instance);
 
             try {
                 let screenshot = await client[
@@ -364,13 +374,22 @@ class LogicController {
 
     instanceRefresh = async (req, res) => {
         let dateTime = new Date();
+        let indoTime = dateTime.toLocaleString("id-ID", {
+            weekday: "long", // hari
+            year: "numeric",
+            month: "long", // bulan lengkap
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false, // 24 jam
+        });
         const idInstance = req.body.id_instance;
         try {
-            //if (dataClient.includes(idInstance)) {
-            //send notify webhook
-
+            if (client[idInstance]?.isRefreshing) return;
+            client[idInstance].isRefreshing = true;
             console.log(
-                dateTime +
+                indoTime +
                     " [+] Processing Refresh WA Page, Instance ID : " +
                     idInstance
             );
@@ -386,8 +405,9 @@ class LogicController {
             );
 
             //client[idInstance].destroy();
-            client[idInstance].initialize();
+            await client[idInstance].initialize();
             dataClient.push(idInstance);
+            client[idInstance].isRefreshing = false;
 
             res.status(200).send({
                 code: 200,
@@ -395,7 +415,7 @@ class LogicController {
                 data: [],
             });
 
-            eventLocal.once(idInstance, async function (payload) {
+            /* eventLocal.once(idInstance, async function (payload) {
                 if (payload == "ACTIVE") {
                     try {
                         console.log(
@@ -460,7 +480,7 @@ class LogicController {
                         );
                     }
                 }
-            });
+            }); */
             //}
         } catch (e) {
             res.status(500).send({
@@ -473,6 +493,16 @@ class LogicController {
 
     getStatus = async (req, res) => {
         let dateTime = new Date();
+        let indoTime = dateTime.toLocaleString("id-ID", {
+            weekday: "long", // hari
+            year: "numeric",
+            month: "long", // bulan lengkap
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false, // 24 jam
+        });
         const idInstance = req.body.id_instance;
 
         try {
@@ -499,7 +529,7 @@ class LogicController {
                         result
                     );
                     console.log(
-                        dateTime +
+                        indoTime +
                             " [+] GET INSTANCE STATUS : " +
                             idInstance +
                             ", STATE : ",

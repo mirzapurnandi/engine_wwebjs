@@ -11,6 +11,16 @@ const {
 } = require("whatsapp-web.js");
 const qrPlugin = require("qrcode");
 let dateTime = new Date();
+let indoTime = dateTime.toLocaleString("id-ID", {
+    weekday: "long", // hari
+    year: "numeric",
+    month: "long", // bulan lengkap
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false, // 24 jam
+});
 const axios = require("axios");
 const { MongoStore } = require("wwebjs-mongo");
 require("./config/configMongoose.db");
@@ -53,8 +63,8 @@ const initialize = async (uuid, isOpen = false) => {
     client[uuid] = new Client({
         puppeteer: {
             headless: true,
-            // executablePath: "/usr/bin/chromium-browser",
-            executablePath: "/usr/bin/google-chrome",
+            executablePath: "/usr/bin/chromium-browser",
+            // executablePath: "/usr/bin/google-chrome",
             // args: ["--no-sandbox", "--disable-setuid-sandbox"],
 
             args: [
@@ -115,7 +125,7 @@ const initialize = async (uuid, isOpen = false) => {
                 base64Data,
                 "base64",
                 function (err) {
-                    console.log(dateTime + " [+] Generate New QR : " + uuid);
+                    console.log(indoTime + " [+] Generate New QR : " + uuid);
                 }
             );
         });
@@ -123,7 +133,7 @@ const initialize = async (uuid, isOpen = false) => {
 
     client[uuid].on("authenticated", (session) => {
         sessionData = session;
-        console.log(dateTime + ` [+] Saved Auth Session`);
+        console.log(indoTime + ` [+] Saved Auth Session`);
 
         const state = "SUCCESS_CREATE_INSTANCE";
         sendWebHook(webHookURL, uuid, "INSTANCE", state);
@@ -133,7 +143,7 @@ const initialize = async (uuid, isOpen = false) => {
 
     client[uuid].on("auth_failure", async (msg) => {
         // Fired if session restore was unsuccessful
-        console.log(dateTime + " [+] auth_failure", msg);
+        console.log(indoTime + " [+] auth_failure", msg);
 
         const state = "AUTH_FAILURE";
         sendWebHook(webHookURL, uuid, "INSTANCE", state);
@@ -145,7 +155,7 @@ const initialize = async (uuid, isOpen = false) => {
     });
 
     client[uuid].on("ready", async () => {
-        console.log(dateTime + " [+] Client Is Active : ", uuid);
+        console.log(indoTime + " [+] Client Is Active : ", uuid);
 
         deleteFile(__dirname + "/qr/qr_" + uuid + ".png"); //delete file
 
@@ -161,7 +171,7 @@ const initialize = async (uuid, isOpen = false) => {
         }
         //console.log(dateTime + " [INBOX] Receive New Message Type : " + msgType);
         console.log(
-            dateTime +
+            indoTime +
                 " [INBOX] Receive New Message Type : " +
                 msgType +
                 "| from : " +
@@ -201,10 +211,8 @@ const initialize = async (uuid, isOpen = false) => {
     });
 
     client[uuid].on("message_ack", (msg, ack) => {
-        let dateTime = new Date();
-
         console.log(
-            dateTime + " [+] DLR : " + uuid + ", ID : " + msg.id.id,
+            indoTime + " [+] DLR : " + uuid + ", ID : " + msg.id.id,
             ", ACK : " + ack
         );
 
@@ -234,7 +242,7 @@ const initialize = async (uuid, isOpen = false) => {
 
     client[uuid].on("disconnected", (reason) => {
         console.log(
-            dateTime + " [+] Client " + uuid + " is disconnect",
+            indoTime + " [+] Client " + uuid + " is disconnect",
             reason
         );
 
@@ -262,7 +270,7 @@ const deleteFolderSession = async (number) => {
                     console.error(err);
                 } else {
                     console.log(
-                        `[+] ${dateTime} Deleted Session Folder : ${number}`
+                        `[+] ${indoTime} Deleted Session Folder : ${number}`
                     );
                 }
             }
@@ -278,15 +286,14 @@ const deleteFolderSession = async (number) => {
         );
         await collectionFiles.drop();
     } catch (e) {
-        console.log(dateTime + "[+] Error DeleteFolderSession");
-        //console.log(dateTime, e);
+        console.log(indoTime + "[+] Error DeleteFolderSession");
     }
 };
 
 function setOnline(idInstance) {
     //set online
     client[`${idInstance}`].sendPresenceAvailable().catch((err) => {
-        console.log(dateTime + "[+] Error Set Online : " + idInstance);
+        console.log(indoTime + "[+] Error Set Online : " + idInstance);
         //console.log(err);
         notifyDisconnect(idInstance); //send notify
     });
@@ -306,8 +313,6 @@ function deleteFile(path) {
 }
 
 function deleteFolderSWCache(idInstance) {
-    let dateTime = new Date();
-
     try {
         fs.rm(
             __dirname +
@@ -331,14 +336,12 @@ function deleteFolderSWCache(idInstance) {
             }
         );
     } catch (e) {
-        console.log(dateTime + "[+] Error deleteFolderSWCache");
+        console.log(indoTime + "[+] Error deleteFolderSWCache");
         // console.log(e);
     }
 }
 
 async function sendWebHook(url, idInstance, type, state = null, data = {}) {
-    let dateTime = new Date();
-
     await axios
         .post(
             url,
@@ -356,34 +359,69 @@ async function sendWebHook(url, idInstance, type, state = null, data = {}) {
             }
         )
         .then((resp) => {
-            console.log(dateTime + "[+] Send WebHook Success : " + type);
+            console.log(indoTime + "[+] Send WebHook Success : " + type);
         })
         .catch((err) => {
-            console.log(dateTime + "[+] Error SendWebHook : " + type);
-            //console.log(err);
+            console.log(indoTime + "[+] Error SendWebHook : " + type);
         });
 }
 
 async function healthCheck(id) {
+    try {
+        const instance = client[id];
+        if (!instance) {
+            console.log(`[!] No client found for ${id}, initializing...`);
+            // initialize(id);
+            return;
+        }
+
+        let state;
+        try {
+            state = await instance.getState();
+        } catch (e) {
+            state = null;
+        }
+
+        if (!state || state === "DISCONNECTED") {
+            console.log(
+                `[!] ${id} not responding (state: ${state}), reinitializing...`
+            );
+            try {
+                await instance.destroy().catch(() => {}); // ignore error jika browser sudah null
+            } catch (e) {
+                console.log(`[!] Error destroying client ${id}`, e);
+            }
+            initialize(id); // bikin ulang instance
+        }
+    } catch (e) {
+        console.log(`[!] Error in healthCheck for ${id}`, e);
+
+        try {
+            if (client[id]) {
+                await client[id].destroy().catch(() => {});
+            }
+        } catch (destroyErr) {
+            console.log(`[!] Error destroying client ${id}`, destroyErr);
+        }
+
+        initInstance(id);
+    }
+}
+
+/* async function healthCheck(id) {
     try {
         const state = await client[id].getState();
         if (!state || state === "DISCONNECTED") {
             console.log(`[!] ${id} not responding, reinitializing...`);
             client[id].destroy();
             client[id].initialize();
-        } else {
-            console.log(`[OK] ${id}, ${state}`);
         }
     } catch (e) {
         console.log(`[!] Error checking state for ${id}`, e);
         client[id].destroy();
         client[id].initialize();
     }
-}
-
-setInterval(() => {
-    Object.keys(client).forEach((id) => healthCheck(id));
-}, 50 * 1000);
+} */
 
 module.exports = {
     client,
@@ -393,4 +431,5 @@ module.exports = {
     deleteFolderSWCache,
     deleteFile,
     sendWebHook,
+    healthCheck,
 };
