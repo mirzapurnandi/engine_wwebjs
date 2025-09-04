@@ -159,6 +159,8 @@ const initialize = async (uuid, isOpen = false) => {
 
         deleteFile(__dirname + "/qr/qr_" + uuid + ".png"); //delete file
 
+        client[uuid].removeAllListeners("qr");
+
         const state = "READY";
         sendWebHook(webHookURL, uuid, "INSTANCE", state);
         setOnline(uuid);
@@ -368,6 +370,34 @@ async function sendWebHook(url, idInstance, type, state = null, data = {}) {
 
 async function healthCheck(id) {
     try {
+        if (!client[id]) return;
+
+        const state = await client[id].getState();
+
+        if (state === "CONNECTED") {
+            console.log(`[+] ${id} is healthy.`);
+            return;
+        }
+
+        console.log(
+            `[!] ${id} not responding (state: ${state}), reinitializing...`
+        );
+        client[id].destroy().then(() => initialize(id));
+    } catch (e) {
+        console.log(`[!] Error checking state for ${id}`, e.message);
+        if (client[id]) {
+            try {
+                await client[id].destroy();
+            } catch (err) {
+                console.log(`[!] Failed to destroy ${id}`, err.message);
+            }
+            initialize(id);
+        }
+    }
+}
+
+/* async function healthCheck(id) {
+    try {
         const instance = client[id];
         if (!instance) {
             console.log(`[!] No client found for ${id}, initializing...`);
@@ -406,7 +436,7 @@ async function healthCheck(id) {
 
         initInstance(id);
     }
-}
+} */
 
 /* async function healthCheck(id) {
     try {
