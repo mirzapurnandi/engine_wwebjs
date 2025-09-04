@@ -49,7 +49,7 @@ setInterval(() => {
     Object.keys(client).forEach((id) => {
         healthCheck(id);
     });
-}, 80 * 1000);
+}, 100 * 1000);
 
 // Start server
 const server = process.env.SERVER || "http://localhost";

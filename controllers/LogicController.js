@@ -404,8 +404,9 @@ class LogicController {
                 state
             );
 
-            client[idInstance].initialize();
             dataClient.push(idInstance);
+            await client[idInstance].initialize();
+            client[idInstance].isRefreshing = false;
 
             res.status(200).send({
                 code: 200,
@@ -415,7 +416,6 @@ class LogicController {
 
             eventLocal.once(idInstance, async function (payload) {
                 if (payload == "ACTIVE") {
-                    client[idInstance].isRefreshing = false;
                     try {
                         console.log(
                             dateTime +
