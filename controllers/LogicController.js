@@ -405,7 +405,7 @@ class LogicController {
             );
 
             //client[idInstance].destroy();
-            await client[idInstance].initialize();
+            client[idInstance].initialize();
             dataClient.push(idInstance);
             client[idInstance].isRefreshing = false;
 
