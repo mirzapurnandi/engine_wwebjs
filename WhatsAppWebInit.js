@@ -138,7 +138,8 @@ const initialize = async (uuid, isOpen = false) => {
         const state = "SUCCESS_CREATE_INSTANCE";
         sendWebHook(webHookURL, uuid, "INSTANCE", state);
 
-        eventLocal.emit(uuid, "ACTIVE");
+        // eventLocal.emit(uuid, "ACTIVE");
+        client[uuid].isRefreshing = false;
     });
 
     client[uuid].on("auth_failure", async (msg) => {
@@ -371,6 +372,7 @@ async function sendWebHook(url, idInstance, type, state = null, data = {}) {
 async function healthCheck(id) {
     try {
         if (!client[id]) return;
+        if (client[id]?.isRefreshing) return;
 
         const state = await client[id].getState();
 

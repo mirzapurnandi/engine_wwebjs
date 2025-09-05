@@ -405,8 +405,8 @@ class LogicController {
             );
 
             dataClient.push(idInstance);
-            await client[idInstance].initialize();
-            client[idInstance].isRefreshing = false;
+            client[idInstance].initialize();
+            // client[idInstance].isRefreshing = false;
 
             res.status(200).send({
                 code: 200,
@@ -414,7 +414,7 @@ class LogicController {
                 data: [],
             });
 
-            eventLocal.once(idInstance, async function (payload) {
+            /* eventLocal.once(idInstance, async function (payload) {
                 if (payload == "ACTIVE") {
                     try {
                         console.log(
@@ -479,7 +479,7 @@ class LogicController {
                         );
                     }
                 }
-            });
+            }); */
             //}
         } catch (e) {
             res.status(500).send({
