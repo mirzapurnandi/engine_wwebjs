@@ -138,7 +138,7 @@ const initialize = async (uuid, isOpen = false) => {
         const state = "SUCCESS_CREATE_INSTANCE";
         sendWebHook(webHookURL, uuid, "INSTANCE", state);
 
-        // eventLocal.emit(uuid, "ACTIVE");
+        eventLocal.emit(uuid, "ACTIVE");
         client[uuid].isRefreshing = false;
     });
 

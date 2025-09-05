@@ -416,7 +416,7 @@ class LogicController {
                 data: [],
             });
 
-            /* eventLocal.once(idInstance, async function (payload) {
+            eventLocal.once(idInstance, async function (payload) {
                 if (payload == "ACTIVE") {
                     try {
                         console.log(
@@ -481,7 +481,7 @@ class LogicController {
                         );
                     }
                 }
-            }); */
+            });
             //}
         } catch (e) {
             res.status(500).send({
