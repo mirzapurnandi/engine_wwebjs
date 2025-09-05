@@ -2,6 +2,8 @@ require("dotenv").config();
 const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 3000;
+const EventEmitter = require("events");
+EventEmitter.defaultMaxListeners = 50; // Naikkan limit listener biar tidak keluar warning
 
 const db = require("./config/configSqlite.db");
 const connectMongoose = require("./config/configMongoose.db");
@@ -50,6 +52,26 @@ setInterval(() => {
         healthCheck(id);
     });
 }, 100 * 1000);
+
+// === Global process event handler (hanya sekali) ===
+process.once("SIGINT", async () => {
+    console.log("\n[!] Caught SIGINT, shutting down...");
+
+    for (const id of Object.keys(client)) {
+        try {
+            await client[id].destroy();
+            console.log(`[+] Client destroyed: ${id}`);
+        } catch (e) {
+            console.error(`[!] Failed to destroy client: ${id}`, e.message);
+        }
+    }
+
+    process.exit(0);
+});
+
+process.once("exit", () => {
+    console.log("[!] Process exiting...");
+});
 
 // Start server
 const server = process.env.SERVER || "http://localhost";

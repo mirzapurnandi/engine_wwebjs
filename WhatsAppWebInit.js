@@ -10,17 +10,8 @@ const {
     RemoteAuth,
 } = require("whatsapp-web.js");
 const qrPlugin = require("qrcode");
-let dateTime = new Date();
-let indoTime = dateTime.toLocaleString("id-ID", {
-    weekday: "long", // hari
-    year: "numeric",
-    month: "long", // bulan lengkap
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false, // 24 jam
-});
+const moment = require("moment-timezone");
+
 const axios = require("axios");
 const { MongoStore } = require("wwebjs-mongo");
 require("./config/configMongoose.db");
@@ -34,6 +25,10 @@ var webHookURL = process.env.HOST_WEBHOOK;
 var authToken = process.env.AUTH_TOKEN;
 var autoStartInstance = false;
 MONGODB_URI = process.env.MONGODB_URI;
+
+function getIndoTime() {
+    return moment().tz("Asia/Jakarta").format("dddd, D MMMM YYYY HH:mm:ss");
+}
 
 const initialize = async (uuid, isOpen = false) => {
     /* let authType = new LocalAuth({ clientId: uuid });
@@ -125,7 +120,9 @@ const initialize = async (uuid, isOpen = false) => {
                 base64Data,
                 "base64",
                 function (err) {
-                    console.log(indoTime + " [+] Generate New QR : " + uuid);
+                    console.log(
+                        getIndoTime() + " [+] Generate New QR : " + uuid
+                    );
                 }
             );
         });
@@ -133,7 +130,7 @@ const initialize = async (uuid, isOpen = false) => {
 
     client[uuid].on("authenticated", (session) => {
         sessionData = session;
-        console.log(indoTime + ` [+] Saved Auth Session`);
+        console.log(getIndoTime() + ` [+] Saved Auth Session`);
 
         const state = "SUCCESS_CREATE_INSTANCE";
         sendWebHook(webHookURL, uuid, "INSTANCE", state);
@@ -143,7 +140,7 @@ const initialize = async (uuid, isOpen = false) => {
 
     client[uuid].on("auth_failure", async (msg) => {
         // Fired if session restore was unsuccessful
-        console.log(indoTime + " [+] auth_failure", msg);
+        console.log(getIndoTime() + " [+] auth_failure", msg);
 
         const state = "AUTH_FAILURE";
         sendWebHook(webHookURL, uuid, "INSTANCE", state);
@@ -155,7 +152,7 @@ const initialize = async (uuid, isOpen = false) => {
     });
 
     client[uuid].on("ready", async () => {
-        console.log(indoTime + " [+] Client Is Active : ", uuid);
+        console.log(getIndoTime() + " [+] Client Is Active : ", uuid);
 
         deleteFile(__dirname + "/qr/qr_" + uuid + ".png"); //delete file
 
@@ -174,13 +171,7 @@ const initialize = async (uuid, isOpen = false) => {
         }
         //console.log(dateTime + " [INBOX] Receive New Message Type : " + msgType);
         console.log(
-            indoTime +
-                " [INBOX] Receive New Message Type : " +
-                msgType +
-                "| from : " +
-                (await msg.from) +
-                " | to : " +
-                (await msg.to)
+            `${getIndoTime()} [INBOX] Receive New Message Type : ${msgType} | from : ${await msg.from} | to : ${await msg.to}`
         );
 
         if (msg.hasMedia) {
@@ -215,7 +206,7 @@ const initialize = async (uuid, isOpen = false) => {
 
     client[uuid].on("message_ack", (msg, ack) => {
         console.log(
-            indoTime + " [+] DLR : " + uuid + ", ID : " + msg.id.id,
+            getIndoTime() + " [+] DLR : " + uuid + ", ID : " + msg.id.id,
             ", ACK : " + ack
         );
 
@@ -240,12 +231,12 @@ const initialize = async (uuid, isOpen = false) => {
     });
 
     client[uuid].on("change_state", (state) => {
-        console.log("CHANGE STATE", state);
+        console.log(`[#] ${uuid} CHANGE STATE`, state);
     });
 
     client[uuid].on("disconnected", (reason) => {
         console.log(
-            indoTime + " [+] Client " + uuid + " is disconnect",
+            getIndoTime() + " [+] Client " + uuid + " is disconnect",
             reason
         );
 
@@ -273,7 +264,7 @@ const deleteFolderSession = async (number) => {
                     console.error(err);
                 } else {
                     console.log(
-                        `[+] ${indoTime} Deleted Session Folder : ${number}`
+                        `${getIndoTime()} [-] Deleted Session Folder : ${number}`
                     );
                 }
             }
@@ -289,14 +280,14 @@ const deleteFolderSession = async (number) => {
         );
         await collectionFiles.drop();
     } catch (e) {
-        console.log(indoTime + "[+] Error DeleteFolderSession");
+        console.log(getIndoTime() + " [+] Error DeleteFolderSession");
     }
 };
 
 function setOnline(idInstance) {
     //set online
     client[`${idInstance}`].sendPresenceAvailable().catch((err) => {
-        console.log(indoTime + "[+] Error Set Online : " + idInstance);
+        console.log(getIndoTime() + " [+] Error Set Online : " + idInstance);
         //console.log(err);
         notifyDisconnect(idInstance); //send notify
     });
@@ -339,7 +330,7 @@ function deleteFolderSWCache(idInstance) {
             }
         );
     } catch (e) {
-        console.log(indoTime + "[+] Error deleteFolderSWCache");
+        console.log(getIndoTime() + " [+] Error deleteFolderSWCache");
         // console.log(e);
     }
 }
@@ -362,10 +353,10 @@ async function sendWebHook(url, idInstance, type, state = null, data = {}) {
             }
         )
         .then((resp) => {
-            console.log(indoTime + "[+] Send WebHook Success : " + type);
+            console.log(getIndoTime() + " [+] Send WebHook Success : " + type);
         })
         .catch((err) => {
-            console.log(indoTime + "[+] Error SendWebHook : " + type);
+            console.log(getIndoTime() + " [+] Error SendWebHook : " + type);
         });
 }
 
@@ -384,7 +375,8 @@ async function healthCheck(id) {
         console.log(
             `[!] ${id} not responding (state: ${state}), reinitializing...`
         );
-        client[id].destroy().then(() => initialize(id));
+        await client[id].destroy();
+        await initialize(id);
     } catch (e) {
         console.log(`[!] Error checking state for ${id}`, e.message);
         if (client[id]) {
@@ -393,6 +385,7 @@ async function healthCheck(id) {
             } catch (err) {
                 console.log(`[!] Failed to destroy ${id}`, err.message);
             }
+            client[id].isRefreshing = true;
             initialize(id);
         }
     }

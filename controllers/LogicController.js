@@ -17,6 +17,10 @@ var emitter = require("events").EventEmitter;
 var eventLocal = new emitter();
 
 let dataClient = [];
+const moment = require("moment-timezone");
+function getIndoTime() {
+    return moment().tz("Asia/Jakarta").format("dddd, D MMMM YYYY HH:mm:ss");
+}
 
 class LogicController {
     constructor() {
@@ -291,22 +295,13 @@ class LogicController {
     };
 
     getScreenshot = async (req, res) => {
-        let dateTime = new Date();
-        let indoTime = dateTime.toLocaleString("id-ID", {
-            weekday: "long", // hari
-            year: "numeric",
-            month: "long", // bulan lengkap
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false, // 24 jam
-        });
         const bodyData = req.query;
 
         try {
             //if(req.headers['x-k1ng-token'] == authToken){
-            console.log(indoTime + " [+] Screenshot : " + bodyData.id_instance);
+            console.log(
+                `{getIndoTime()} [+] Screenshot : ${bodyData.id_instance}`
+            );
 
             try {
                 let screenshot = await client[
@@ -375,25 +370,12 @@ class LogicController {
     };
 
     instanceRefresh = async (req, res) => {
-        let dateTime = new Date();
-        let indoTime = dateTime.toLocaleString("id-ID", {
-            weekday: "long", // hari
-            year: "numeric",
-            month: "long", // bulan lengkap
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false, // 24 jam
-        });
         const idInstance = req.body.id_instance;
         try {
             if (client[idInstance]?.isRefreshing) return;
             client[idInstance].isRefreshing = true;
             console.log(
-                indoTime +
-                    " [+] Processing Refresh WA Page, Instance ID : " +
-                    idInstance
+                `${getIndoTime()} [+] Processing Refresh WA Page, Instance ID : ${idInstance}`
             );
 
             deleteFolderSWCache(idInstance);
@@ -494,17 +476,6 @@ class LogicController {
     };
 
     getStatus = async (req, res) => {
-        let dateTime = new Date();
-        let indoTime = dateTime.toLocaleString("id-ID", {
-            weekday: "long", // hari
-            year: "numeric",
-            month: "long", // bulan lengkap
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false, // 24 jam
-        });
         const idInstance = req.body.id_instance;
 
         try {
@@ -531,11 +502,7 @@ class LogicController {
                         result
                     );
                     console.log(
-                        indoTime +
-                            " [+] GET INSTANCE STATUS : " +
-                            idInstance +
-                            ", STATE : ",
-                        result
+                        `${getIndoTime()} [+] GET INSTANCE STATUS : ${idInstance}, STATE : ${result}`
                     );
                 })
                 .catch((err) => {
