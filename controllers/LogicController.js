@@ -300,7 +300,7 @@ class LogicController {
         try {
             //if(req.headers['x-k1ng-token'] == authToken){
             console.log(
-                `{getIndoTime()} [+] Screenshot : ${bodyData.id_instance}`
+                `${getIndoTime()} [+] Screenshot : ${bodyData.id_instance}`
             );
 
             try {

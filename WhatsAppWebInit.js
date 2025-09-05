@@ -206,8 +206,9 @@ const initialize = async (uuid, isOpen = false) => {
 
     client[uuid].on("message_ack", (msg, ack) => {
         console.log(
-            getIndoTime() + " [+] DLR : " + uuid + ", ID : " + msg.id.id,
-            ", ACK : " + ack
+            `${getIndoTime()} [+] DLR : ${uuid}, ID : ${
+                msg.id.id
+            }, ACK : ${ack}`
         );
 
         data = {
@@ -236,8 +237,7 @@ const initialize = async (uuid, isOpen = false) => {
 
     client[uuid].on("disconnected", (reason) => {
         console.log(
-            getIndoTime() + " [+] Client " + uuid + " is disconnect",
-            reason
+            `${getIndoTime()} [+] Client ${uuid} is disconnect, ${reason}`
         );
 
         const state = "DISCONNECT";
@@ -280,7 +280,7 @@ const deleteFolderSession = async (number) => {
         );
         await collectionFiles.drop();
     } catch (e) {
-        console.log(getIndoTime() + " [+] Error DeleteFolderSession");
+        console.log(`${getIndoTime()} [+] Error DeleteFolderSession`);
     }
 };
 
@@ -330,8 +330,7 @@ function deleteFolderSWCache(idInstance) {
             }
         );
     } catch (e) {
-        console.log(getIndoTime() + " [+] Error deleteFolderSWCache");
-        // console.log(e);
+        console.log(`${getIndoTime()} [+] Error deleteFolderSWCache`);
     }
 }
 
@@ -353,10 +352,10 @@ async function sendWebHook(url, idInstance, type, state = null, data = {}) {
             }
         )
         .then((resp) => {
-            console.log(getIndoTime() + " [+] Send WebHook Success : " + type);
+            console.log(`${getIndoTime()} [+] Send WebHook Success : ${type}`);
         })
         .catch((err) => {
-            console.log(getIndoTime() + " [+] Error SendWebHook : " + type);
+            console.log(`${getIndoTime()} [+] Error SendWebHook : ${type}`);
         });
 }
 
