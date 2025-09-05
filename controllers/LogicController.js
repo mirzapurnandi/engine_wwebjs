@@ -418,6 +418,7 @@ class LogicController {
 
             eventLocal.once(idInstance, async function (payload) {
                 if (payload == "ACTIVE") {
+                    client[idInstance].isRefreshing = true;
                     try {
                         console.log(
                             dateTime +

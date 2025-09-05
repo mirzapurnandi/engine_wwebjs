@@ -139,7 +139,6 @@ const initialize = async (uuid, isOpen = false) => {
         sendWebHook(webHookURL, uuid, "INSTANCE", state);
 
         eventLocal.emit(uuid, "ACTIVE");
-        client[uuid].isRefreshing = false;
     });
 
     client[uuid].on("auth_failure", async (msg) => {
@@ -161,6 +160,7 @@ const initialize = async (uuid, isOpen = false) => {
         deleteFile(__dirname + "/qr/qr_" + uuid + ".png"); //delete file
 
         client[uuid].removeAllListeners("qr");
+        client[uuid].isRefreshing = false;
 
         const state = "READY";
         sendWebHook(webHookURL, uuid, "INSTANCE", state);
