@@ -31,12 +31,14 @@ function getIndoTime() {
 }
 
 const initialize = async (uuid, isOpen = false) => {
-    /* let authType = new LocalAuth({ clientId: uuid });
-    const puppeteerOptions = {
-        qrTimeoutMs: 60000, //Timeout for qr code selector in puppeteer
-        authStrategy: authType,
+    await mongoose.connect(MONGODB_URI);
+    const store = new MongoStore({ mongoose: mongoose });
+    client[uuid] = new Client({
         puppeteer: {
-            headless: true, //for not show engine activity in window
+            headless: true,
+            // executablePath: "/usr/bin/chromium-browser",
+            executablePath: "/usr/bin/google-chrome",
+            // args: ["--no-sandbox", "--disable-setuid-sandbox"],
             args: [
                 "--disable-setuid-sandbox",
                 "--no-sandbox",
@@ -46,62 +48,6 @@ const initialize = async (uuid, isOpen = false) => {
                 "--no-first-run",
                 "--no-zygote",
                 "--disable-gpu",
-            ],
-            userAgent:
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36",
-        },
-    };
-    client[uuid] = new Client(puppeteerOptions); */
-
-    await mongoose.connect(MONGODB_URI);
-    const store = new MongoStore({ mongoose: mongoose });
-    client[uuid] = new Client({
-        puppeteer: {
-            headless: true,
-            // executablePath: "/usr/bin/chromium-browser",
-            executablePath: "/usr/bin/google-chrome",
-            // args: ["--no-sandbox", "--disable-setuid-sandbox"],
-
-            args: [
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-gpu",
-                "--disable-dev-shm-usage",
-                "--disable-accelerated-2d-canvas",
-                "--disable-web-security",
-                "--disable-features=IsolateOrigins,site-per-process",
-                "--disable-features=VizDisplayCompositor",
-                // "--single-process",
-                "--no-zygote",
-                "--renderer-process-limit=1",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-background-networking",
-                "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-breakpad",
-                "--disable-client-side-phishing-detection",
-                "--disable-component-update",
-                "--disable-default-apps",
-                "--disable-domain-reliability",
-                "--disable-extensions",
-                "--disable-hang-monitor",
-                "--disable-ipc-flooding-protection",
-                "--disable-notifications",
-                "--disable-offer-store-unmasked-wallet-cards",
-                "--disable-popup-blocking",
-                "--disable-prompt-on-repost",
-                "--disable-renderer-backgrounding",
-                "--disable-sync",
-                "--force-color-profile=srgb",
-                "--metrics-recording-only",
-                "--mute-audio",
-                "--no-crash-upload",
-                "--no-pings",
-                "--password-store=basic",
-                "--use-gl=swiftshader",
-                "--use-mock-keychain",
-                "--disable-software-rasterizer",
             ],
         },
         authStrategy: new RemoteAuth({
@@ -389,63 +335,6 @@ async function healthCheck(id) {
         }
     }
 }
-
-/* async function healthCheck(id) {
-    try {
-        const instance = client[id];
-        if (!instance) {
-            console.log(`[!] No client found for ${id}, initializing...`);
-            // initialize(id);
-            return;
-        }
-
-        let state;
-        try {
-            state = await instance.getState();
-        } catch (e) {
-            state = null;
-        }
-
-        if (!state || state === "DISCONNECTED") {
-            console.log(
-                `[!] ${id} not responding (state: ${state}), reinitializing...`
-            );
-            try {
-                await instance.destroy().catch(() => {}); // ignore error jika browser sudah null
-            } catch (e) {
-                console.log(`[!] Error destroying client ${id}`, e);
-            }
-            initialize(id); // bikin ulang instance
-        }
-    } catch (e) {
-        console.log(`[!] Error in healthCheck for ${id}`, e);
-
-        try {
-            if (client[id]) {
-                await client[id].destroy().catch(() => {});
-            }
-        } catch (destroyErr) {
-            console.log(`[!] Error destroying client ${id}`, destroyErr);
-        }
-
-        initInstance(id);
-    }
-} */
-
-/* async function healthCheck(id) {
-    try {
-        const state = await client[id].getState();
-        if (!state || state === "DISCONNECTED") {
-            console.log(`[!] ${id} not responding, reinitializing...`);
-            client[id].destroy();
-            client[id].initialize();
-        }
-    } catch (e) {
-        console.log(`[!] Error checking state for ${id}`, e);
-        client[id].destroy();
-        client[id].initialize();
-    }
-} */
 
 module.exports = {
     client,
