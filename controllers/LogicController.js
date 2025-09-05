@@ -90,7 +90,8 @@ class LogicController {
         try {
             const respMsg = await client[bodyData.id_instance].sendMessage(
                 `${bodyData.destination}@c.us`,
-                bodyData.message
+                bodyData.message,
+                { waitUntilMsgSent: true }
             );
 
             const response = {
@@ -219,7 +220,8 @@ class LogicController {
             // Step 3: Kirim pesan
             const respMsg = await currentClient.sendMessage(
                 chatId,
-                bodyData.message
+                bodyData.message,
+                { waitUntilMsgSent: true }
             );
 
             // Step 4: Hentikan status mengetik
