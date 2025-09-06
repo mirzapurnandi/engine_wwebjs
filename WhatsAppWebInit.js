@@ -20,15 +20,42 @@ const mongoose = require("mongoose");
 var emitter = require("events").EventEmitter;
 var eventLocal = new emitter();
 
+function getIndoTime() {
+    return moment().tz("Asia/Jakarta").format("dddd, D MMMM YYYY HH:mm:ss");
+}
+
+const PQueue = require("p-queue").default;
+const restartQueue = new PQueue({
+    concurrency: parseInt(process.env.RESTART_CONCURRENCY || "1", 10),
+    interval: parseInt(process.env.RESTART_INTERVAL || "5000", 10), // jeda antar restart
+    intervalCap: 1,
+});
+
+restartQueue.on("active", () => {
+    console.log(
+        `${getIndoTime()} [QUEUE] Task started. Pending: ${
+            restartQueue.pending
+        } | Running: ${restartQueue.size}`
+    );
+});
+
+restartQueue.on("completed", () => {
+    console.log(
+        `${getIndoTime()} [QUEUE] Task completed. Pending: ${
+            restartQueue.pending
+        } | Running: ${restartQueue.size}`
+    );
+});
+
+restartQueue.on("error", (error) => {
+    console.log(`${getIndoTime()} [QUEUE] Task error: ${error.message}`);
+});
+
 let client = {};
 var webHookURL = process.env.HOST_WEBHOOK;
 var authToken = process.env.AUTH_TOKEN;
 var autoStartInstance = false;
 MONGODB_URI = process.env.MONGODB_URI;
-
-function getIndoTime() {
-    return moment().tz("Asia/Jakarta").format("dddd, D MMMM YYYY HH:mm:ss");
-}
 
 const initialize = async (uuid, isOpen = false) => {
     await mongoose.connect(MONGODB_URI);
@@ -40,9 +67,13 @@ const initialize = async (uuid, isOpen = false) => {
             executablePath: "/usr/bin/google-chrome-stable",
             // args: ["--no-sandbox", "--disable-setuid-sandbox"],
             args: [
-                "--disable-setuid-sandbox",
                 "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-gpu",
                 "--disable-dev-shm-usage",
+                "--disable-software-rasterizer",
+                "--no-first-run",
+                "--no-zygote",
             ],
         },
         authStrategy: new RemoteAuth({
@@ -313,22 +344,52 @@ async function healthCheck(id) {
         }
 
         console.log(
-            `[!] ${id} not responding (state: ${state}), reinitializing...`
+            `[!] ${id} not responding (state: ${state}), scheduling restart...`
         );
-        await client[id].destroy();
-        await initialize(id);
+        await _scheduleRestart(id);
     } catch (e) {
         console.log(`[!] Error checking state for ${id}`, e.message);
-        if (client[id]) {
-            try {
-                await client[id].destroy();
-            } catch (err) {
-                console.log(`[!] Failed to destroy ${id}`, err.message);
-            }
-            client[id].isRefreshing = true;
-            initialize(id);
-        }
+        await _scheduleRestart(id);
     }
+}
+
+async function _scheduleRestart(id) {
+    if (!client[id]) return;
+
+    // Kalau sudah ada restart yang dijadwalkan, jangan double
+    if (client[id].isRefreshing) {
+        console.log(`[!] Restart for ${id} is already in progress, skipping.`);
+        return;
+    }
+    client[id].isRefreshing = true;
+
+    restartQueue.add(async () => {
+        console.log(`[QUEUE] Instance ${id} masuk antrian restart...`);
+        console.log(
+            `[QUEUE] Pending: ${restartQueue.pending}, Running: ${restartQueue.size}`
+        );
+
+        try {
+            console.log(`[!] Restarting instance ${id}...`);
+
+            await client[id].destroy().catch(() => {});
+            console.log(`[+] Destroyed client ${id}`);
+
+            await initialize(id, true);
+            console.log(`[+] Restarted instance ${id} successfully.`);
+        } catch (err) {
+            console.log(`[!] Failed to restart ${id}`, err.message);
+        } finally {
+            if (client[id]) {
+                client[id].isRefreshing = false;
+            } else {
+                // fallback, biar instance masih bisa di-restart kalau gagal total
+                console.log(
+                    `[!] Client ${id} not found after restart, clearing flag`
+                );
+            }
+        }
+    });
 }
 
 /* async function healthCheck(id) {
@@ -397,4 +458,5 @@ module.exports = {
     deleteFile,
     sendWebHook,
     healthCheck,
+    _scheduleRestart,
 };
