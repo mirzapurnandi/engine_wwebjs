@@ -123,6 +123,33 @@ const initialize = async (uuid, isOpen = false) => {
             reject(new Error(`Auth failure on ${uuid}: ${msg}`));
         });
 
+        client[uuid].on("message_ack", (msg, ack) => {
+            console.log(
+                `${getIndoTime()} [+] DLR : ${uuid}, ID : ${
+                    msg.id.id
+                }, ACK : ${ack}`
+            );
+
+            data = {
+                destination: msg.to,
+                msg: "null",
+                ack: ack,
+                id: msg.id.id,
+            };
+            const state = "";
+            sendWebHook(webHookURL, uuid, "DLR", state, data);
+
+            /*
+                == ACK VALUES ==
+                ACK_ERROR: -1
+                ACK_PENDING: 0              //waiting network
+                ACK_SERVER: 1               //ceklis 1
+                ACK_DEVICE: 2               //ceklist 2 
+                ACK_READ: 3                 //ceklist 2 and read
+                ACK_PLAYED: 4
+            */
+        });
+
         client[uuid].on("ready", () => {
             console.log(getIndoTime(), "[+] Ready:", uuid);
             deleteFile(__dirname + "/qr/qr_" + uuid + ".png");
@@ -130,6 +157,50 @@ const initialize = async (uuid, isOpen = false) => {
             sendWebHook(webHookURL, uuid, "INSTANCE", "READY");
             setOnline(uuid);
             resolveOnce();
+        });
+
+        client[uuid].on("message", async (msg) => {
+            let msgType = "text";
+            if (msg.hasMedia) {
+                msgType = "media";
+            }
+            //console.log(dateTime + " [INBOX] Receive New Message Type : " + msgType);
+            console.log(
+                `${getIndoTime()} [INBOX] Receive New Message Type : ${msgType} | from : ${await msg.from} | to : ${await msg.to}`
+            );
+
+            if (msg.hasMedia) {
+                if (process.env.type == "INTERACTIVE") {
+                    const media = await msg.downloadMedia();
+                    //send webhook
+                    let dataMsg = {
+                        id_msg: await msg.id.id,
+                        type: "media",
+                        from: await msg.from,
+                        content: media,
+                    };
+                    sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
+                }
+            } else {
+                //console.log(msg);
+                //push message
+                let message = await msg.body;
+                //send webhook
+                let dataMsg = {
+                    id_msg: await msg.id.id,
+                    type: "text",
+                    from: await msg.from,
+                    to: await msg.to,
+                    content: message,
+                };
+                if (message !== "") {
+                    sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
+                }
+            }
+        });
+
+        client[uuid].on("change_state", (state) => {
+            console.log(`[#] ${uuid} CHANGE STATE`, state);
         });
 
         client[uuid].on("disconnected", async (reason) => {
