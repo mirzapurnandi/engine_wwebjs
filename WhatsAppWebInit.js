@@ -256,4 +256,5 @@ module.exports = {
     deleteFolderSWCache,
     deleteFile,
     notifyDisconnect,
+    sendWebHook,
 };
