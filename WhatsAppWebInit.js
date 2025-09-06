@@ -35,19 +35,14 @@ const initialize = async (uuid, isOpen = false) => {
     const store = new MongoStore({ mongoose: mongoose });
     client[uuid] = new Client({
         puppeteer: {
-            headless: true,
+            headless: false,
             // executablePath: "/usr/bin/chromium-browser",
-            executablePath: "/usr/bin/google-chrome",
+            executablePath: "/usr/bin/google-chrome-stable",
             // args: ["--no-sandbox", "--disable-setuid-sandbox"],
             args: [
                 "--disable-setuid-sandbox",
                 "--no-sandbox",
-                "--unhandled-rejections=strict",
                 "--disable-dev-shm-usage",
-                "--disable-accelerated-2d-canvas",
-                "--no-first-run",
-                "--no-zygote",
-                "--disable-gpu",
             ],
         },
         authStrategy: new RemoteAuth({
@@ -335,6 +330,63 @@ async function healthCheck(id) {
         }
     }
 }
+
+/* async function healthCheck(id) {
+    try {
+        const instance = client[id];
+        if (!instance) {
+            console.log(`[!] No client found for ${id}, initializing...`);
+            // initialize(id);
+            return;
+        }
+
+        let state;
+        try {
+            state = await instance.getState();
+        } catch (e) {
+            state = null;
+        }
+
+        if (!state || state === "DISCONNECTED") {
+            console.log(
+                `[!] ${id} not responding (state: ${state}), reinitializing...`
+            );
+            try {
+                await instance.destroy().catch(() => {}); // ignore error jika browser sudah null
+            } catch (e) {
+                console.log(`[!] Error destroying client ${id}`, e);
+            }
+            initialize(id); // bikin ulang instance
+        }
+    } catch (e) {
+        console.log(`[!] Error in healthCheck for ${id}`, e);
+
+        try {
+            if (client[id]) {
+                await client[id].destroy().catch(() => {});
+            }
+        } catch (destroyErr) {
+            console.log(`[!] Error destroying client ${id}`, destroyErr);
+        }
+
+        initInstance(id);
+    }
+} */
+
+/* async function healthCheck(id) {
+    try {
+        const state = await client[id].getState();
+        if (!state || state === "DISCONNECTED") {
+            console.log(`[!] ${id} not responding, reinitializing...`);
+            client[id].destroy();
+            client[id].initialize();
+        }
+    } catch (e) {
+        console.log(`[!] Error checking state for ${id}`, e);
+        client[id].destroy();
+        client[id].initialize();
+    }
+} */
 
 module.exports = {
     client,
