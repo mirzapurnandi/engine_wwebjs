@@ -230,6 +230,7 @@ async function scheduleInitialize(uuid) {
 async function _scheduleRestart(uuid) {
     if (!client[uuid] || client[uuid].isRefreshing) return;
     client[uuid].isRefreshing = true;
+    sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT");
 
     restartQueue.add(async () => {
         console.log(`[QUEUE] Restarting instance ${uuid}...`);
