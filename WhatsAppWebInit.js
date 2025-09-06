@@ -228,7 +228,7 @@ async function scheduleInitialize(uuid) {
 }
 
 async function _scheduleRestart(uuid) {
-    if (!client[uuid] || client[uuid].isRefreshing) return;
+    if (!client[uuid]) return;
     client[uuid].isRefreshing = true;
     sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT");
 
