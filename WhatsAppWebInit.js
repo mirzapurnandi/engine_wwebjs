@@ -154,6 +154,7 @@ const initialize = async (uuid, isOpen = false) => {
             console.log(getIndoTime(), "[+] Ready:", uuid);
             deleteFile(__dirname + "/qr/qr_" + uuid + ".png");
             client[uuid].removeAllListeners("qr");
+            client[uuid].isRefreshing = false;
             sendWebHook(webHookURL, uuid, "INSTANCE", "READY");
             setOnline(uuid);
             resolveOnce();
