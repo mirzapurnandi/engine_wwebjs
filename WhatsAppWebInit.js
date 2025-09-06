@@ -19,7 +19,7 @@ function getIndoTime() {
 // === Queue restart / init serial ===
 const restartQueue = new PQueue({
     concurrency: parseInt(process.env.RESTART_CONCURRENCY || "1", 10),
-    interval: parseInt(process.env.RESTART_INTERVAL || "10000", 10),
+    interval: parseInt(process.env.RESTART_INTERVAL || "8000", 10),
     intervalCap: 1,
 });
 
@@ -112,7 +112,7 @@ const initialize = async (uuid, isOpen = false) => {
                 "INSTANCE",
                 "SUCCESS_CREATE_INSTANCE"
             );
-            eventLocal.emit(uuid, "ACTIVE");
+            // eventLocal.emit(uuid, "ACTIVE");
         });
 
         client[uuid].on("auth_failure", async (msg) => {

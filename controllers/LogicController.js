@@ -298,7 +298,6 @@ class LogicController {
         const bodyData = req.query;
 
         try {
-            //if(req.headers['x-k1ng-token'] == authToken){
             console.log(
                 `${getIndoTime()} [+] Screenshot : ${bodyData.id_instance}`
             );
@@ -312,15 +311,11 @@ class LogicController {
                 await res.send(`<img src="data:${mimeType};base64,${b64}" />`);
             } catch (e) {
                 res.status(400).send({
-                    code: 500,
+                    code: 400,
                     details: "Internal Server Error",
                     data: e,
                 });
             }
-            /* }else{
-                res.status(401);
-                res.send({code : 401, details : 'Unauthorized'})
-            } */
         } catch (e) {
             res.status(500).send({
                 code: 500,
@@ -333,10 +328,14 @@ class LogicController {
     instanceRedeploy = async (req, res) => {
         const bodyData = req.body;
         try {
-            if (dataClient.includes(bodyData.id_instance)) {
+            if (!client[bodyData.id_instance]) {
+                res.status(400).send({
+                    code: 400,
+                    details: "Instance tidak ditemukan",
+                    data: [],
+                });
+            } else {
                 await client[bodyData.id_instance].destroy();
-
-                //send notify webhook
                 const state = "DISCONNECT";
                 sendWebHook(
                     process.env.HOST_WEBHOOK,
@@ -349,15 +348,13 @@ class LogicController {
                 deleteFile(
                     __dirname + "/qr/qr_" + bodyData.id_instance + ".png"
                 );
-            }
-            //init instance
-            //session(idInstance);
 
-            res.status(200).send({
-                code: 200,
-                details: "Ok",
-                data: [],
-            });
+                res.status(200).send({
+                    code: 200,
+                    details: "Ok",
+                    data: [],
+                });
+            }
         } catch (error) {
             console.log(error);
 
@@ -372,7 +369,7 @@ class LogicController {
     instanceRefresh = async (req, res) => {
         const idInstance = req.body.id_instance;
         try {
-            if (client[idInstance]?.isRefreshing) return;
+            // if (client[idInstance]?.isRefreshing) return;
             client[idInstance].isRefreshing = true;
             console.log(
                 `${getIndoTime()} [+] Processing Refresh WA Page, Instance ID : ${idInstance}`
@@ -398,7 +395,7 @@ class LogicController {
                 data: [],
             });
 
-            eventLocal.once(idInstance, async function (payload) {
+            /* eventLocal.once(idInstance, async function (payload) {
                 if (payload == "ACTIVE") {
                     client[idInstance].isRefreshing = true;
                     try {
@@ -464,7 +461,7 @@ class LogicController {
                         );
                     }
                 }
-            });
+            }); */
             //}
         } catch (e) {
             res.status(500).send({
