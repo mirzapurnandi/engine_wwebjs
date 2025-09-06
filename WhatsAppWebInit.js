@@ -35,7 +35,7 @@ const initialize = async (uuid, isOpen = false) => {
     const store = new MongoStore({ mongoose: mongoose });
     client[uuid] = new Client({
         puppeteer: {
-            headless: false,
+            headless: true,
             // executablePath: "/usr/bin/chromium-browser",
             executablePath: "/usr/bin/google-chrome-stable",
             // args: ["--no-sandbox", "--disable-setuid-sandbox"],
