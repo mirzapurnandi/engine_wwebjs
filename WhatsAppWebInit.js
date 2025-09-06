@@ -1,33 +1,25 @@
 const fs = require("fs");
 require("dotenv").config({ quiet: true });
-const {
-    Client,
-    Buttons,
-    List,
-    MessageMedia,
-    LegacySessionAuth,
-    LocalAuth,
-    RemoteAuth,
-} = require("whatsapp-web.js");
+const { Client, MessageMedia, RemoteAuth } = require("whatsapp-web.js");
 const qrPlugin = require("qrcode");
 const moment = require("moment-timezone");
-
 const axios = require("axios");
 const { MongoStore } = require("wwebjs-mongo");
 require("./config/configMongoose.db");
 const mongoose = require("mongoose");
+const PQueue = require("p-queue").default;
 
-var emitter = require("events").EventEmitter;
-var eventLocal = new emitter();
+const emitter = require("events").EventEmitter;
+const eventLocal = new emitter();
 
 function getIndoTime() {
     return moment().tz("Asia/Jakarta").format("dddd, D MMMM YYYY HH:mm:ss");
 }
 
-const PQueue = require("p-queue").default;
+// === Queue restart / init serial ===
 const restartQueue = new PQueue({
     concurrency: parseInt(process.env.RESTART_CONCURRENCY || "1", 10),
-    interval: parseInt(process.env.RESTART_INTERVAL || "10000", 10), // jeda antar restart
+    interval: parseInt(process.env.RESTART_INTERVAL || "10000", 10),
     intervalCap: 1,
 });
 
@@ -38,7 +30,6 @@ restartQueue.on("active", () => {
         } | Running: ${restartQueue.size}`
     );
 });
-
 restartQueue.on("completed", () => {
     console.log(
         `${getIndoTime()} [QUEUE] Task completed. Pending: ${
@@ -46,26 +37,23 @@ restartQueue.on("completed", () => {
         } | Running: ${restartQueue.size}`
     );
 });
-
 restartQueue.on("error", (error) => {
     console.log(`${getIndoTime()} [QUEUE] Task error: ${error.message}`);
 });
 
 let client = {};
-var webHookURL = process.env.HOST_WEBHOOK;
-var authToken = process.env.AUTH_TOKEN;
-var autoStartInstance = false;
-MONGODB_URI = process.env.MONGODB_URI;
+const webHookURL = process.env.HOST_WEBHOOK;
+const authToken = process.env.AUTH_TOKEN;
+const MONGODB_URI = process.env.MONGODB_URI;
 
+// === Initialize / create instance ===
 const initialize = async (uuid, isOpen = false) => {
-    await mongoose.connect(MONGODB_URI);
-    const store = new MongoStore({ mongoose: mongoose });
+    await mongoose.connect(MONGODB_URI, { autoIndex: true });
+    const store = new MongoStore({ mongoose });
     client[uuid] = new Client({
         puppeteer: {
             headless: true,
-            // executablePath: "/usr/bin/chromium-browser",
             executablePath: "/usr/bin/google-chrome-stable",
-            // args: ["--no-sandbox", "--disable-setuid-sandbox"],
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -78,405 +66,194 @@ const initialize = async (uuid, isOpen = false) => {
         },
         authStrategy: new RemoteAuth({
             clientId: uuid,
-            store: store,
-            backupSyncIntervalMs: 1000 * 60 * 60 * 1,
+            store,
+            backupSyncIntervalMs: 1000 * 60 * 60,
         }),
     });
 
     return new Promise((resolve, reject) => {
         let resolved = false;
-        client[uuid].on("qr", (qr) => {
+
+        const resolveOnce = () => {
             if (!resolved) {
                 resolved = true;
-                resolve(uuid); // ✅ Chrome sudah buka QR → lanjut queue
+                client[uuid].isRefreshing = false;
+                resolve(uuid);
             }
-            // NOTE: This event will not be fired if a session is specified.
+        };
+
+        client[uuid].isRefreshing = true;
+
+        client[uuid].on("qr", (qr) => {
+            resolveOnce(); // QR muncul → lanjut queue
             qrPlugin.toDataURL(qr, (err, src) => {
-                var base64Data = src.replace(/^data:image\/png;base64,/, "");
-                fs.writeFile(
-                    __dirname + "/qr/qr_" + uuid + ".png",
-                    base64Data,
-                    "base64",
-                    function (err) {
-                        console.log(
-                            getIndoTime() + " [+] Generate New QR : " + uuid
-                        );
-                    }
-                );
+                if (!err) {
+                    fs.writeFile(
+                        __dirname + "/qr/qr_" + uuid + ".png",
+                        src.replace(/^data:image\/png;base64,/, ""),
+                        "base64",
+                        () => {
+                            console.log(
+                                getIndoTime(),
+                                "[+] QR Generated:",
+                                uuid
+                            );
+                        }
+                    );
+                }
             });
         });
 
         client[uuid].on("authenticated", (session) => {
-            sessionData = session;
-            console.log(getIndoTime() + ` [+] Saved Auth Session`);
-
-            const state = "SUCCESS_CREATE_INSTANCE";
-            sendWebHook(webHookURL, uuid, "INSTANCE", state);
-
+            console.log(getIndoTime(), "[+] Authenticated:", uuid);
+            sendWebHook(
+                webHookURL,
+                uuid,
+                "INSTANCE",
+                "SUCCESS_CREATE_INSTANCE"
+            );
             eventLocal.emit(uuid, "ACTIVE");
         });
 
         client[uuid].on("auth_failure", async (msg) => {
-            // Fired if session restore was unsuccessful
-            console.log(getIndoTime() + " [+] auth_failure", msg);
-
-            const state = "AUTH_FAILURE";
-            sendWebHook(webHookURL, uuid, "INSTANCE", state);
-
-            await client[uuid].destroy();
-            deleteFolderSession(uuid);
+            console.log(getIndoTime(), "[!] Auth Failure:", uuid, msg);
+            sendWebHook(webHookURL, uuid, "INSTANCE", "AUTH_FAILURE");
+            await client[uuid].destroy().catch(() => {});
+            await deleteFolderSession(uuid);
             reject(new Error(`Auth failure on ${uuid}: ${msg}`));
         });
 
-        client[uuid].on("ready", async () => {
-            console.log(getIndoTime() + " [+] Client Is Active : ", uuid);
-
-            deleteFile(__dirname + "/qr/qr_" + uuid + ".png"); //delete file
-
+        client[uuid].on("ready", () => {
+            console.log(getIndoTime(), "[+] Ready:", uuid);
+            deleteFile(__dirname + "/qr/qr_" + uuid + ".png");
             client[uuid].removeAllListeners("qr");
-            client[uuid].isRefreshing = false;
-
-            const state = "READY";
-            sendWebHook(webHookURL, uuid, "INSTANCE", state);
+            sendWebHook(webHookURL, uuid, "INSTANCE", "READY");
             setOnline(uuid);
-            resolve(uuid);
+            resolveOnce();
         });
 
-        client[uuid].on("message", async (msg) => {
-            let msgType = "text";
-            if (msg.hasMedia) {
-                msgType = "media";
-            }
-            //console.log(dateTime + " [INBOX] Receive New Message Type : " + msgType);
-            console.log(
-                `${getIndoTime()} [INBOX] Receive New Message Type : ${msgType} | from : ${await msg.from} | to : ${await msg.to}`
-            );
-
-            if (msg.hasMedia) {
-                if (process.env.type == "INTERACTIVE") {
-                    const media = await msg.downloadMedia();
-                    //send webhook
-                    let dataMsg = {
-                        id_msg: await msg.id.id,
-                        type: "media",
-                        from: await msg.from,
-                        content: media,
-                    };
-                    sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
-                }
-            } else {
-                //console.log(msg);
-                //push message
-                let message = await msg.body;
-                //send webhook
-                let dataMsg = {
-                    id_msg: await msg.id.id,
-                    type: "text",
-                    from: await msg.from,
-                    to: await msg.to,
-                    content: message,
-                };
-                if (message !== "") {
-                    sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
-                }
-            }
-        });
-
-        client[uuid].on("message_ack", (msg, ack) => {
-            console.log(
-                `${getIndoTime()} [+] DLR : ${uuid}, ID : ${
-                    msg.id.id
-                }, ACK : ${ack}`
-            );
-
-            data = {
-                destination: msg.to,
-                msg: "null",
-                ack: ack,
-                id: msg.id.id,
-            };
-            const state = "";
-            sendWebHook(webHookURL, uuid, "DLR", state, data);
-
-            /*
-                == ACK VALUES ==
-                ACK_ERROR: -1
-                ACK_PENDING: 0              //waiting network
-                ACK_SERVER: 1               //ceklis 1
-                ACK_DEVICE: 2               //ceklist 2 
-                ACK_READ: 3                 //ceklist 2 and read
-                ACK_PLAYED: 4
-            */
-        });
-
-        client[uuid].on("change_state", (state) => {
-            console.log(`[#] ${uuid} CHANGE STATE`, state);
-        });
-
-        client[uuid].on("disconnected", (reason) => {
-            console.log(
-                `${getIndoTime()} [+] Client ${uuid} is disconnect, ${reason}`
-            );
-
-            const state = "DISCONNECT";
-            sendWebHook(webHookURL, uuid, "INSTANCE", state);
-
-            client[uuid].destroy();
+        client[uuid].on("disconnected", async (reason) => {
+            console.log(getIndoTime(), "[!] Disconnected:", uuid, reason);
+            sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT");
+            await client[uuid].destroy().catch(() => {});
             deleteFolderSWCache(uuid);
-            //deleteFile(__dirname + `/sessions/session_${uuid}.json`);
-            //deleteFolderSession(uuid)
         });
 
-        if (isOpen) {
-            client[uuid].initialize();
-        }
+        if (isOpen) client[uuid].initialize();
     });
 };
 
-const deleteFolderSession = async (number) => {
-    try {
-        fs.rm(
-            `${__dirname}/.wwebjs_auth/RemoteAuth-${number}`,
-            { recursive: true },
-            (err) => {
-                if (err) {
-                    console.error(err);
-                } else {
-                    console.log(
-                        `${getIndoTime()} [-] Deleted Session Folder : ${number}`
-                    );
-                }
-            }
-        );
-
-        const collectionChunks = mongoose.connection.collection(
-            `whatsapp-RemoteAuth-${number}.chunks`
-        );
-        await collectionChunks.drop();
-
-        const collectionFiles = mongoose.connection.collection(
-            `whatsapp-RemoteAuth-${number}.files`
-        );
-        await collectionFiles.drop();
-    } catch (e) {
-        console.log(`${getIndoTime()} [+] Error DeleteFolderSession`);
-    }
-};
-
-function setOnline(idInstance) {
-    //set online
-    client[`${idInstance}`].sendPresenceAvailable().catch((err) => {
-        console.log(getIndoTime() + " [+] Error Set Online : " + idInstance);
-        //console.log(err);
-        notifyDisconnect(idInstance); //send notify
+// === Schedule Init / Restart via queue ===
+async function scheduleInitialize(uuid) {
+    restartQueue.add(async () => {
+        console.log(`[QUEUE] Booting instance ${uuid}...`);
+        try {
+            await initialize(uuid, true);
+            console.log(`[QUEUE] Instance ${uuid} initialized.`);
+        } catch (err) {
+            console.log(`[QUEUE] Failed init ${uuid}:`, err.message);
+        }
     });
 }
 
-function notifyDisconnect(idInstance) {
-    const state = "DISCONNECT";
-    sendWebHook(webHookURL, idInstance, "INSTANCE", state);
+async function _scheduleRestart(uuid) {
+    if (!client[uuid] || client[uuid].isRefreshing) return;
+    client[uuid].isRefreshing = true;
+
+    restartQueue.add(async () => {
+        console.log(`[QUEUE] Restarting instance ${uuid}...`);
+        try {
+            await client[uuid].destroy().catch(() => {});
+            console.log(`[QUEUE] Client destroyed: ${uuid}`);
+            await initialize(uuid, true);
+            console.log(`[QUEUE] Client restarted: ${uuid}`);
+        } catch (err) {
+            console.log(`[QUEUE] Restart failed ${uuid}:`, err.message);
+        } finally {
+            if (client[uuid]) client[uuid].isRefreshing = false;
+        }
+    });
+}
+
+// === Health check ===
+async function healthCheck(uuid) {
+    try {
+        if (!client[uuid] || client[uuid]?.isRefreshing) return;
+        const state = await client[uuid].getState().catch(() => null);
+        if (!state || state !== "CONNECTED") {
+            console.log(
+                `[HEALTH] ${uuid} not connected, scheduling restart...`
+            );
+            await _scheduleRestart(uuid);
+        } else {
+            console.log(`[HEALTH] ${uuid} is healthy`);
+        }
+    } catch (e) {
+        console.log(`[HEALTH] Error checking ${uuid}:`, e.message);
+        await _scheduleRestart(uuid);
+    }
+}
+
+// === Utils ===
+function setOnline(uuid) {
+    client[uuid]?.sendPresenceAvailable().catch(() => notifyDisconnect(uuid));
+}
+
+function notifyDisconnect(uuid) {
+    sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT");
 }
 
 function deleteFile(path) {
-    fs.unlink(path, (err) => {
-        if (err) {
-            return true;
-        }
-    });
+    fs.unlink(path, () => {});
 }
 
-function deleteFolderSWCache(idInstance) {
+async function deleteFolderSession(uuid) {
+    try {
+        fs.rmSync(`${__dirname}/.wwebjs_auth/RemoteAuth-${uuid}`, {
+            recursive: true,
+            force: true,
+        });
+        const chunks = mongoose.connection.collection(
+            `whatsapp-RemoteAuth-${uuid}.chunks`
+        );
+        const files = mongoose.connection.collection(
+            `whatsapp-RemoteAuth-${uuid}.files`
+        );
+        await chunks.drop().catch(() => {});
+        await files.drop().catch(() => {});
+    } catch (e) {
+        console.log("[!] Error deleteFolderSession:", uuid, e.message);
+    }
+}
+
+function deleteFolderSWCache(uuid) {
     try {
         fs.rm(
-            __dirname +
-                "/.wwebjs_auth/RemoteAuth-" +
-                idInstance +
-                "/Default/Service Worker/ScriptCache",
+            `${__dirname}/.wwebjs_auth/RemoteAuth-${uuid}/Default/Service Worker/ScriptCache`,
             { recursive: true },
-            (err) => {
-                if (err) {
-                    console.error(err);
-                    console.log(
-                        "[+] Failed Deleted Session SWCache Folder : " +
-                            idInstance
-                    );
-                } else {
-                    console.log(
-                        "[+] Success Deleted Session SWCache Folder : " +
-                            idInstance
-                    );
-                }
-            }
+            () => {}
         );
-    } catch (e) {
-        console.log(`${getIndoTime()} [+] Error deleteFolderSWCache`);
-    }
+    } catch {}
 }
 
-async function sendWebHook(url, idInstance, type, state = null, data = {}) {
-    await axios
-        .post(
+async function sendWebHook(url, uuid, type, state = null, data = {}) {
+    try {
+        await axios.post(
             url,
-            {
-                id_instance: idInstance,
-                type: type,
-                state: state,
-                data: data,
-                timeout: 120000, //120 second
-            },
-            {
-                headers: {
-                    "x-purnand-token": authToken,
-                },
-            }
-        )
-        .then((resp) => {
-            console.log(`${getIndoTime()} [+] Send WebHook Success : ${type}`);
-        })
-        .catch((err) => {
-            console.log(`${getIndoTime()} [+] Error SendWebHook : ${type}`);
-        });
-}
-
-async function healthCheck(id) {
-    try {
-        if (!client[id]) return;
-        if (client[id]?.isRefreshing) return;
-
-        const state = await client[id].getState();
-
-        if (state === "CONNECTED") {
-            console.log(`[+] ${id} is healthy.`);
-            return;
-        }
-
-        console.log(
-            `[!] ${id} not responding (state: ${state}), scheduling restart...`
+            { id_instance: uuid, type, state, data, timeout: 120000 },
+            { headers: { "x-purnand-token": authToken } }
         );
-        await _scheduleRestart(id);
-    } catch (e) {
-        console.log(`[!] Error checking state for ${id}`, e.message);
-        await _scheduleRestart(id);
-    }
+    } catch {}
 }
-
-async function scheduleInitialize(id) {
-    restartQueue.add(async () => {
-        console.log(`[BOOT] Initializing ${id} via queue...`);
-        try {
-            await initialize(id, true);
-            console.log(`[BOOT] ${id} initialized successfully.`);
-        } catch (e) {
-            console.log(`[BOOT] Failed to initialize ${id}:`, e.message);
-        }
-    });
-}
-
-async function _scheduleRestart(id) {
-    if (!client[id]) return;
-
-    // Kalau sudah ada restart yang dijadwalkan, jangan double
-    if (client[id].isRefreshing) {
-        console.log(`[!] Restart for ${id} is already in progress, skipping.`);
-        return;
-    }
-    client[id].isRefreshing = true;
-
-    restartQueue.add(async () => {
-        console.log(`[QUEUE] Instance ${id} masuk antrian restart...`);
-        console.log(
-            `[QUEUE] Pending: ${restartQueue.pending}, Running: ${restartQueue.size}`
-        );
-
-        try {
-            console.log(`[!] Restarting instance ${id}...`);
-
-            await client[id].destroy().catch(() => {});
-            console.log(`[+] Destroyed client ${id}`);
-
-            await initialize(id, true);
-            console.log(`[+] Restarted instance ${id} successfully.`);
-        } catch (err) {
-            console.log(`[!] Failed to restart ${id}`, err.message);
-        } finally {
-            if (client[id]) {
-                client[id].isRefreshing = false;
-            } else {
-                // fallback, biar instance masih bisa di-restart kalau gagal total
-                console.log(
-                    `[!] Client ${id} not found after restart, clearing flag`
-                );
-            }
-        }
-    });
-}
-
-/* async function healthCheck(id) {
-    try {
-        const instance = client[id];
-        if (!instance) {
-            console.log(`[!] No client found for ${id}, initializing...`);
-            // initialize(id);
-            return;
-        }
-
-        let state;
-        try {
-            state = await instance.getState();
-        } catch (e) {
-            state = null;
-        }
-
-        if (!state || state === "DISCONNECTED") {
-            console.log(
-                `[!] ${id} not responding (state: ${state}), reinitializing...`
-            );
-            try {
-                await instance.destroy().catch(() => {}); // ignore error jika browser sudah null
-            } catch (e) {
-                console.log(`[!] Error destroying client ${id}`, e);
-            }
-            initialize(id); // bikin ulang instance
-        }
-    } catch (e) {
-        console.log(`[!] Error in healthCheck for ${id}`, e);
-
-        try {
-            if (client[id]) {
-                await client[id].destroy().catch(() => {});
-            }
-        } catch (destroyErr) {
-            console.log(`[!] Error destroying client ${id}`, destroyErr);
-        }
-
-        initInstance(id);
-    }
-} */
-
-/* async function healthCheck(id) {
-    try {
-        const state = await client[id].getState();
-        if (!state || state === "DISCONNECTED") {
-            console.log(`[!] ${id} not responding, reinitializing...`);
-            client[id].destroy();
-            client[id].initialize();
-        }
-    } catch (e) {
-        console.log(`[!] Error checking state for ${id}`, e);
-        client[id].destroy();
-        client[id].initialize();
-    }
-} */
 
 module.exports = {
     client,
     initialize,
-    notifyDisconnect,
+    scheduleInitialize,
+    _scheduleRestart,
+    healthCheck,
     deleteFolderSession,
     deleteFolderSWCache,
     deleteFile,
-    sendWebHook,
-    healthCheck,
-    _scheduleRestart,
-    scheduleInitialize,
+    notifyDisconnect,
 };
