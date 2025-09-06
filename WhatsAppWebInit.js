@@ -62,7 +62,7 @@ const initialize = async (uuid, isOpen = false) => {
     const store = new MongoStore({ mongoose: mongoose });
     client[uuid] = new Client({
         puppeteer: {
-            headless: true,
+            headless: false,
             // executablePath: "/usr/bin/chromium-browser",
             executablePath: "/usr/bin/google-chrome-stable",
             // args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -353,6 +353,18 @@ async function healthCheck(id) {
     }
 }
 
+async function scheduleInitialize(id) {
+    restartQueue.add(async () => {
+        console.log(`[BOOT] Initializing ${id} via queue...`);
+        try {
+            await initialize(id, true);
+            console.log(`[BOOT] ${id} initialized successfully.`);
+        } catch (e) {
+            console.log(`[BOOT] Failed to initialize ${id}:`, e.message);
+        }
+    });
+}
+
 async function _scheduleRestart(id) {
     if (!client[id]) return;
 
@@ -459,4 +471,5 @@ module.exports = {
     sendWebHook,
     healthCheck,
     _scheduleRestart,
+    scheduleInitialize,
 };

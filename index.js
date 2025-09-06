@@ -9,7 +9,12 @@ const db = require("./config/configSqlite.db");
 const connectMongoose = require("./config/configMongoose.db");
 connectMongoose();
 
-const { client, initialize, healthCheck } = require("./WhatsAppWebInit");
+const {
+    client,
+    initialize,
+    healthCheck,
+    scheduleInitialize,
+} = require("./WhatsAppWebInit");
 
 // Middleware
 app.use(express.json());
@@ -41,7 +46,7 @@ db.all(SELECT_ALL_SESSION, async (error, rows) => {
         return;
     }
     for (const row of rows) {
-        await initialize(row.id_instance);
+        await scheduleInitialize(row.id_instance);
         console.log("[+] Init Instance From DB :", row.id_instance);
     }
 });
