@@ -27,7 +27,7 @@ function getIndoTime() {
 const PQueue = require("p-queue").default;
 const restartQueue = new PQueue({
     concurrency: parseInt(process.env.RESTART_CONCURRENCY || "1", 10),
-    interval: parseInt(process.env.RESTART_INTERVAL || "3000", 10), // jeda antar restart
+    interval: parseInt(process.env.RESTART_INTERVAL || "10000", 10), // jeda antar restart
     intervalCap: 1,
 });
 
