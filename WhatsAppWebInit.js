@@ -27,7 +27,7 @@ function getIndoTime() {
 const PQueue = require("p-queue").default;
 const restartQueue = new PQueue({
     concurrency: parseInt(process.env.RESTART_CONCURRENCY || "1", 10),
-    interval: parseInt(process.env.RESTART_INTERVAL || "5000", 10), // jeda antar restart
+    interval: parseInt(process.env.RESTART_INTERVAL || "3000", 10), // jeda antar restart
     intervalCap: 1,
 });
 
@@ -62,7 +62,7 @@ const initialize = async (uuid, isOpen = false) => {
     const store = new MongoStore({ mongoose: mongoose });
     client[uuid] = new Client({
         puppeteer: {
-            headless: false,
+            headless: true,
             // executablePath: "/usr/bin/chromium-browser",
             executablePath: "/usr/bin/google-chrome-stable",
             // args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -83,116 +83,122 @@ const initialize = async (uuid, isOpen = false) => {
         }),
     });
 
-    client[uuid].on("qr", (qr) => {
-        // NOTE: This event will not be fired if a session is specified.
-        qrPlugin.toDataURL(qr, (err, src) => {
-            var base64Data = src.replace(/^data:image\/png;base64,/, "");
-            fs.writeFile(
-                __dirname + "/qr/qr_" + uuid + ".png",
-                base64Data,
-                "base64",
-                function (err) {
-                    console.log(
-                        getIndoTime() + " [+] Generate New QR : " + uuid
-                    );
-                }
-            );
+    return new Promise((resolve, reject) => {
+        let resolved = false;
+        client[uuid].on("qr", (qr) => {
+            if (!resolved) {
+                resolved = true;
+                resolve(uuid); // ✅ Chrome sudah buka QR → lanjut queue
+            }
+            // NOTE: This event will not be fired if a session is specified.
+            qrPlugin.toDataURL(qr, (err, src) => {
+                var base64Data = src.replace(/^data:image\/png;base64,/, "");
+                fs.writeFile(
+                    __dirname + "/qr/qr_" + uuid + ".png",
+                    base64Data,
+                    "base64",
+                    function (err) {
+                        console.log(
+                            getIndoTime() + " [+] Generate New QR : " + uuid
+                        );
+                    }
+                );
+            });
         });
-    });
 
-    client[uuid].on("authenticated", (session) => {
-        sessionData = session;
-        console.log(getIndoTime() + ` [+] Saved Auth Session`);
+        client[uuid].on("authenticated", (session) => {
+            sessionData = session;
+            console.log(getIndoTime() + ` [+] Saved Auth Session`);
 
-        const state = "SUCCESS_CREATE_INSTANCE";
-        sendWebHook(webHookURL, uuid, "INSTANCE", state);
+            const state = "SUCCESS_CREATE_INSTANCE";
+            sendWebHook(webHookURL, uuid, "INSTANCE", state);
 
-        eventLocal.emit(uuid, "ACTIVE");
-    });
+            eventLocal.emit(uuid, "ACTIVE");
+        });
 
-    client[uuid].on("auth_failure", async (msg) => {
-        // Fired if session restore was unsuccessful
-        console.log(getIndoTime() + " [+] auth_failure", msg);
+        client[uuid].on("auth_failure", async (msg) => {
+            // Fired if session restore was unsuccessful
+            console.log(getIndoTime() + " [+] auth_failure", msg);
 
-        const state = "AUTH_FAILURE";
-        sendWebHook(webHookURL, uuid, "INSTANCE", state);
+            const state = "AUTH_FAILURE";
+            sendWebHook(webHookURL, uuid, "INSTANCE", state);
 
-        await client[uuid].destroy();
-        deleteFolderSession(uuid);
-        await client[uuid].initialize();
-        console.error("AUTHENTICATION FAILURE", msg);
-    });
+            await client[uuid].destroy();
+            deleteFolderSession(uuid);
+            reject(new Error(`Auth failure on ${uuid}: ${msg}`));
+        });
 
-    client[uuid].on("ready", async () => {
-        console.log(getIndoTime() + " [+] Client Is Active : ", uuid);
+        client[uuid].on("ready", async () => {
+            console.log(getIndoTime() + " [+] Client Is Active : ", uuid);
 
-        deleteFile(__dirname + "/qr/qr_" + uuid + ".png"); //delete file
+            deleteFile(__dirname + "/qr/qr_" + uuid + ".png"); //delete file
 
-        client[uuid].removeAllListeners("qr");
-        client[uuid].isRefreshing = false;
+            client[uuid].removeAllListeners("qr");
+            client[uuid].isRefreshing = false;
 
-        const state = "READY";
-        sendWebHook(webHookURL, uuid, "INSTANCE", state);
-        setOnline(uuid);
-    });
+            const state = "READY";
+            sendWebHook(webHookURL, uuid, "INSTANCE", state);
+            setOnline(uuid);
+            resolve(uuid);
+        });
 
-    client[uuid].on("message", async (msg) => {
-        let msgType = "text";
-        if (msg.hasMedia) {
-            msgType = "media";
-        }
-        //console.log(dateTime + " [INBOX] Receive New Message Type : " + msgType);
-        console.log(
-            `${getIndoTime()} [INBOX] Receive New Message Type : ${msgType} | from : ${await msg.from} | to : ${await msg.to}`
-        );
+        client[uuid].on("message", async (msg) => {
+            let msgType = "text";
+            if (msg.hasMedia) {
+                msgType = "media";
+            }
+            //console.log(dateTime + " [INBOX] Receive New Message Type : " + msgType);
+            console.log(
+                `${getIndoTime()} [INBOX] Receive New Message Type : ${msgType} | from : ${await msg.from} | to : ${await msg.to}`
+            );
 
-        if (msg.hasMedia) {
-            if (process.env.type == "INTERACTIVE") {
-                const media = await msg.downloadMedia();
+            if (msg.hasMedia) {
+                if (process.env.type == "INTERACTIVE") {
+                    const media = await msg.downloadMedia();
+                    //send webhook
+                    let dataMsg = {
+                        id_msg: await msg.id.id,
+                        type: "media",
+                        from: await msg.from,
+                        content: media,
+                    };
+                    sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
+                }
+            } else {
+                //console.log(msg);
+                //push message
+                let message = await msg.body;
                 //send webhook
                 let dataMsg = {
                     id_msg: await msg.id.id,
-                    type: "media",
+                    type: "text",
                     from: await msg.from,
-                    content: media,
+                    to: await msg.to,
+                    content: message,
                 };
-                sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
+                if (message !== "") {
+                    sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
+                }
             }
-        } else {
-            //console.log(msg);
-            //push message
-            let message = await msg.body;
-            //send webhook
-            let dataMsg = {
-                id_msg: await msg.id.id,
-                type: "text",
-                from: await msg.from,
-                to: await msg.to,
-                content: message,
+        });
+
+        client[uuid].on("message_ack", (msg, ack) => {
+            console.log(
+                `${getIndoTime()} [+] DLR : ${uuid}, ID : ${
+                    msg.id.id
+                }, ACK : ${ack}`
+            );
+
+            data = {
+                destination: msg.to,
+                msg: "null",
+                ack: ack,
+                id: msg.id.id,
             };
-            if (message !== "") {
-                sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
-            }
-        }
-    });
+            const state = "";
+            sendWebHook(webHookURL, uuid, "DLR", state, data);
 
-    client[uuid].on("message_ack", (msg, ack) => {
-        console.log(
-            `${getIndoTime()} [+] DLR : ${uuid}, ID : ${
-                msg.id.id
-            }, ACK : ${ack}`
-        );
-
-        data = {
-            destination: msg.to,
-            msg: "null",
-            ack: ack,
-            id: msg.id.id,
-        };
-        const state = "";
-        sendWebHook(webHookURL, uuid, "DLR", state, data);
-
-        /*
+            /*
                 == ACK VALUES ==
                 ACK_ERROR: -1
                 ACK_PENDING: 0              //waiting network
@@ -201,29 +207,30 @@ const initialize = async (uuid, isOpen = false) => {
                 ACK_READ: 3                 //ceklist 2 and read
                 ACK_PLAYED: 4
             */
+        });
+
+        client[uuid].on("change_state", (state) => {
+            console.log(`[#] ${uuid} CHANGE STATE`, state);
+        });
+
+        client[uuid].on("disconnected", (reason) => {
+            console.log(
+                `${getIndoTime()} [+] Client ${uuid} is disconnect, ${reason}`
+            );
+
+            const state = "DISCONNECT";
+            sendWebHook(webHookURL, uuid, "INSTANCE", state);
+
+            client[uuid].destroy();
+            deleteFolderSWCache(uuid);
+            //deleteFile(__dirname + `/sessions/session_${uuid}.json`);
+            //deleteFolderSession(uuid)
+        });
+
+        if (isOpen) {
+            client[uuid].initialize();
+        }
     });
-
-    client[uuid].on("change_state", (state) => {
-        console.log(`[#] ${uuid} CHANGE STATE`, state);
-    });
-
-    client[uuid].on("disconnected", (reason) => {
-        console.log(
-            `${getIndoTime()} [+] Client ${uuid} is disconnect, ${reason}`
-        );
-
-        const state = "DISCONNECT";
-        sendWebHook(webHookURL, uuid, "INSTANCE", state);
-
-        client[uuid].destroy();
-        deleteFolderSWCache(uuid);
-        //deleteFile(__dirname + `/sessions/session_${uuid}.json`);
-        //deleteFolderSession(uuid)
-    });
-
-    if (isOpen) {
-        client[uuid].initialize();
-    }
 };
 
 const deleteFolderSession = async (number) => {
