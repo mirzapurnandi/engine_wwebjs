@@ -71,21 +71,11 @@ const initialize = async (uuid, isOpen = false) => {
         }),
     });
 
+    client[uuid].needsQr = false; // default
+
     return new Promise((resolve, reject) => {
-        let resolved = false;
-
-        const resolveOnce = () => {
-            if (!resolved) {
-                resolved = true;
-                client[uuid].isRefreshing = false;
-                resolve(uuid);
-            }
-        };
-
-        client[uuid].isRefreshing = true;
-
         client[uuid].on("qr", (qr) => {
-            resolveOnce(); // QR muncul → lanjut queue
+            client[uuid].needsQr = true;
             qrPlugin.toDataURL(qr, (err, src) => {
                 if (!err) {
                     fs.writeFile(
@@ -102,6 +92,8 @@ const initialize = async (uuid, isOpen = false) => {
                     );
                 }
             });
+            sendWebHook(webHookURL, uuid, "INSTANCE", "QR_REQUIRED");
+            resolve(uuid);
         });
 
         client[uuid].on("authenticated", (session) => {
@@ -151,13 +143,13 @@ const initialize = async (uuid, isOpen = false) => {
         });
 
         client[uuid].on("ready", () => {
+            client[uuid].needsQr = false;
             console.log(getIndoTime(), "[+] Ready:", uuid);
             deleteFile(__dirname + "/qr/qr_" + uuid + ".png");
             client[uuid].removeAllListeners("qr");
-            client[uuid].isRefreshing = false;
             sendWebHook(webHookURL, uuid, "INSTANCE", "READY");
             setOnline(uuid);
-            resolveOnce();
+            resolve(uuid);
         });
 
         client[uuid].on("message", async (msg) => {
@@ -251,7 +243,13 @@ async function _scheduleRestart(uuid) {
 // === Health check ===
 async function healthCheck(uuid) {
     try {
-        if (!client[uuid] || client[uuid]?.isRefreshing) return;
+        if (!client[uuid]) return;
+        if (client[uuid]?.isRefreshing) return;
+        if (client[uuid].needsQr) {
+            console.log(`[HEALTH] ${uuid} is waiting for QR scan, skip check.`);
+            return;
+        }
+
         const state = await client[uuid].getState().catch(() => null);
         if (!state || state !== "CONNECTED") {
             console.log(

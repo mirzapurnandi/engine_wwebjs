@@ -2,23 +2,23 @@
 set -e
 
 # === Variabel ===
-DOMAIN="engine01.wasend.id"
+DOMAIN="engine02.wasend.id"
 REPO="https://github.com/mirzapurnandi/engine_wwebjs.git"
 APP_DIR="/var/www/engine_wwebjs"
 
 # === Update & Dependensi ===
-echo "[1/8] Update system..."
+echo "[1/9] Update system..."
 sudo apt update -y && sudo apt upgrade -y
-sudo apt install -y curl wget git gnupg build-essential ufw unzip
+sudo apt install -y curl wget git gnupg build-essential ufw unzip apt-transport-https software-properties-common
 
 # === Install Node.js 22 ===
-echo "[2/8] Install Node.js 22..."
+echo "[2/9] Install Node.js 22..."
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 sudo npm install -g npm@latest pm2
 
-# === Install MongoDB 7 ===
-echo "[3/8] Install MongoDB 7..."
+# === Install MongoDB 8 ===
+echo "[3/9] Install MongoDB 8..."
 curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
   sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
 
@@ -29,8 +29,17 @@ sudo apt update
 sudo apt install -y mongodb-org
 sudo systemctl enable --now mongod
 
+# === Install Google Chrome Stable ===
+echo "[4/9] Install Google Chrome Stable..."
+wget -qO- https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | \
+  sudo tee /etc/apt/sources.list.d/google-chrome.list
+
+sudo apt update
+sudo apt install -y google-chrome-stable
+
 # === Clone Project ===
-echo "[4/8] Clone repository..."
+echo "[5/9] Clone repository..."
 sudo mkdir -p $APP_DIR
 sudo chown -R $USER:$USER $APP_DIR
 if [ ! -d "$APP_DIR/.git" ]; then
@@ -40,16 +49,16 @@ else
 fi
 
 cd $APP_DIR
-echo "[5/8] Install dependencies..."
+echo "[6/9] Install dependencies..."
 npm install
 
-echo "[6/8] Start app with PM2..."
+echo "[7/9] Start app with PM2..."
 pm2 start npm --name "engine_wwebjs" -- run start
 pm2 startup systemd -u $USER --hp $HOME
 pm2 save
 
 # === Nginx & SSL ===
-echo "[7/8] Setup Nginx + SSL..."
+echo "[8/9] Setup Nginx + SSL..."
 sudo apt install -y nginx certbot python3-certbot-nginx
 
 NGINX_CONF="/etc/nginx/sites-available/$DOMAIN"
@@ -77,7 +86,7 @@ sudo systemctl reload nginx
 sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN
 
 # === Zsh & Oh My Zsh ===
-echo "[8/8] Install Zsh & Oh My Zsh..."
+echo "[9/9] Install Zsh & Oh My Zsh..."
 sudo apt install -y zsh
 chsh -s $(which zsh)
 export RUNZSH=no

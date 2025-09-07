@@ -45,9 +45,14 @@ db.all(SELECT_ALL_SESSION, async (error, rows) => {
         console.error("Error loading sessions:", error);
         return;
     }
-    for (const row of rows) {
-        await scheduleInitialize(row.id_instance);
-        console.log("[+] Init Instance From DB :", row.id_instance);
+    if (rows.length > 0) {
+        for (const row of rows) {
+            initialize(row.id_instance);
+            // await scheduleInitialize(row.id_instance);
+            console.log("[+] Init Instance From DB :", row.id_instance);
+        }
+    } else {
+        console.error("Table sessions empty!");
     }
 });
 
@@ -56,7 +61,7 @@ setInterval(() => {
     Object.keys(client).forEach((id) => {
         healthCheck(id);
     });
-}, 100 * 1000);
+}, 50 * 1000);
 
 // === Global process event handler (hanya sekali) ===
 process.once("SIGINT", async () => {

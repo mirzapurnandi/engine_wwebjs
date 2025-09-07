@@ -7,6 +7,7 @@ const {
     deleteFile,
     deleteFolderSWCache,
     sendWebHook,
+    _scheduleRestart,
 } = require("../WhatsAppWebInit");
 
 const { Buttons, List, MessageMedia } = require("whatsapp-web.js");
@@ -55,7 +56,7 @@ class LogicController {
                 if (error) {
                     console.log(error);
                 } else {
-                    await initialize(id);
+                    initialize(id);
                     console.log("[+] Init Instance : " + id);
                     res.status(201).json({
                         message: "Session created",
@@ -369,8 +370,6 @@ class LogicController {
     instanceRefresh = async (req, res) => {
         const idInstance = req.body.id_instance;
         try {
-            // if (client[idInstance]?.isRefreshing) return;
-            client[idInstance].isRefreshing = true;
             console.log(
                 `${getIndoTime()} [+] Processing Refresh WA Page, Instance ID : ${idInstance}`
             );
@@ -386,8 +385,7 @@ class LogicController {
             );
 
             dataClient.push(idInstance);
-            client[idInstance].initialize();
-            // client[idInstance].isRefreshing = false;
+            await _scheduleRestart(idInstance);
 
             res.status(200).send({
                 code: 200,
