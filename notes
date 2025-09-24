@@ -1,0 +1,8 @@
+### Config agar SSH tahan lama
+sudo nano /etc/ssh/sshd_config
+# Cari (atau tambahkan kalau belum ada):
+ClientAliveInterval 60
+ClientAliveCountMax 120
+
+sudo systemctl restart ssh
+

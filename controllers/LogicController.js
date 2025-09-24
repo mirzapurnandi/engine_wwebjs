@@ -14,6 +14,8 @@ const { Buttons, List, MessageMedia } = require("whatsapp-web.js");
 const fs = require("fs");
 const path = require("path");
 
+const crypto = require("crypto");
+
 var emitter = require("events").EventEmitter;
 var eventLocal = new emitter();
 
@@ -208,6 +210,14 @@ class LogicController {
                 });
             }
 
+            const kodeUnik = crypto
+                .randomBytes(6)
+                .toString("base64")
+                .replace(/[^a-zA-Z0-9]/g, "")
+                .slice(0, 16);
+
+            const finalMessage = `${bodyData.message}\n\nkey:${kodeUnik}`;
+
             // Step 2: Ambil chat dan tampilkan status mengetik
             const chat = await currentClient.getChatById(chatId);
             await chat.sendStateTyping(); // Menunjukkan status mengetik
@@ -225,7 +235,7 @@ class LogicController {
             // Step 3: Kirim pesan
             const respMsg = await currentClient.sendMessage(
                 chatId,
-                bodyData.message,
+                finalMessage,
                 { waitUntilMsgSent: true }
             );
 
