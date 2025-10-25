@@ -305,10 +305,22 @@ class LogicController {
 
             // Step 3: Ambil media dari URL (setelah delay)
             const fileName = `wasend id ${kodeUnik}`;
-            const messageMedia = await MessageMedia.fromUrl(bodyData.file_url);
+            /* const messageMedia = await MessageMedia.fromUrl(bodyData.file_url);
             const contentMSG = new MessageMedia(
                 messageMedia.mimetype,
                 messageMedia.data,
+                fileName
+            ); */
+            const response = await axios.get(bodyData.file_url, {
+                responseType: "arraybuffer",
+                maxRedirects: 5,
+            });
+            const base64Data = Buffer.from(response.data, "binary").toString(
+                "base64"
+            );
+            const contentMSG = new MessageMedia(
+                response.headers["content-type"],
+                base64Data,
                 fileName
             );
 
