@@ -309,6 +309,7 @@ class LogicController {
                 timeout: 20000,
             }); */
             let messageMedia;
+            console.log("DOWNLOAD_MEDIA_START");
             try {
                 messageMedia = await MessageMedia.fromUrl(bodyData.file_url, {
                     unsafeMime: true,
@@ -318,6 +319,7 @@ class LogicController {
                 console.log("DOWNLOAD_MEDIA_ERROR: ", err);
                 // throw err;
             }
+            console.log("DOWNLOAD_MEDIA_END");
             console.log("DOWNLOAD_MEDIA_SUCCESS: ", messageMedia?.mimetype);
 
             let extension = "jpg";
