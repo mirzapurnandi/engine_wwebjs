@@ -304,10 +304,21 @@ class LogicController {
             await new Promise((resolve) => setTimeout(resolve, randomDelay));
 
             // Step 3: Ambil media dari URL (setelah delay)
-            const messageMedia = await MessageMedia.fromUrl(bodyData.file_url, {
+            /* const messageMedia = await MessageMedia.fromUrl(bodyData.file_url, {
                 unsafeMime: true,
                 timeout: 20000,
-            });
+            }); */
+            let messageMedia;
+            try {
+                messageMedia = await MessageMedia.fromUrl(bodyData.file_url, {
+                    unsafeMime: true,
+                    timeout: 20000,
+                });
+            } catch (err) {
+                console.log("DOWNLOAD_MEDIA_ERROR: ", err);
+                // throw err;
+            }
+            console.log("DOWNLOAD_MEDIA_SUCCESS: ", messageMedia?.mimetype);
 
             let extension = "jpg";
             if (!messageMedia || !messageMedia.data) {
