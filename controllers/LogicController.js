@@ -263,6 +263,89 @@ class LogicController {
         }
     };
 
+    sendMediaWithTyping = async (req, res) => {
+        const bodyData = req.body;
+
+        try {
+            const chatId = `${bodyData.destination}@c.us`;
+            const instanceId = bodyData.id_instance;
+
+            const currentClient = client[instanceId];
+            if (!currentClient) {
+                return res.status(404).json({
+                    code: 404,
+                    details: "Instance not found",
+                    data: [],
+                });
+            }
+
+            // Step 1: Generate kode unik
+            const kodeUnik = crypto
+                .randomBytes(6)
+                .toString("base64")
+                .replace(/[^a-zA-Z0-9]/g, "")
+                .slice(0, 15);
+
+            const finalCaption = `${bodyData.message}\n\nkey:${kodeUnik}`;
+
+            // Step 2: Simulasi typing
+            const chat = await currentClient.getChatById(chatId);
+            await chat.sendStateTyping();
+
+            const { minDelay, maxDelay, randomDelay } =
+                await this.getHumanDelay(bodyData.message, bodyData.delay);
+
+            console.log("Media Typing simulation: ", {
+                minDelay,
+                maxDelay,
+                randomDelay,
+            });
+
+            await new Promise((resolve) => setTimeout(resolve, randomDelay));
+
+            // Step 3: Ambil media dari URL (setelah delay)
+            const fileName = `wasend id ${kodeUnik}`;
+            const messageMedia = await MessageMedia.fromUrl(bodyData.file_url);
+            const contentMSG = new MessageMedia(
+                messageMedia.mimetype,
+                messageMedia.data,
+                fileName
+            );
+
+            // Step 4: Kirim media
+            const respMsg = await currentClient.sendMessage(
+                chatId,
+                contentMSG,
+                {
+                    caption: finalCaption,
+                    waitUntilMsgSent: true,
+                }
+            );
+
+            // Step 5: stop typing state
+            await chat.clearState();
+
+            return res.status(200).json({
+                code: 200,
+                details: "Media sent with typing simulation",
+                data: {
+                    id_instance: instanceId,
+                    destination: bodyData.destination,
+                    destination_in_wa: chatId,
+                    id_message: respMsg.id.id,
+                    delay: randomDelay,
+                },
+            });
+        } catch (error) {
+            console.log(error);
+            return res.status(500).json({
+                code: 500,
+                details: "Failed to send media",
+                data: error,
+            });
+        }
+    };
+
     getQr = async (req, res) => {
         const bodyData = req.query;
         try {

@@ -13,11 +13,16 @@ router.delete("/:id_instance", checkHeader, logicController.deleteSession);
 
 router.get("/qr", checkHeader, logicController.getQr);
 router.post("/send-message", checkHeader, logicController.sendMessage);
-router.post("/send-media", checkHeader, logicController.sendMedia);
 router.post(
     "/send-message-typing",
     checkHeader,
     logicController.sendMessageWithTyping
+);
+router.post("/send-media", checkHeader, logicController.sendMedia);
+router.post(
+    "/send-media-typing",
+    checkHeader,
+    logicController.sendMediaWithTyping
 );
 
 router.get("/screenshot", checkHeader, logicController.getScreenshot);
