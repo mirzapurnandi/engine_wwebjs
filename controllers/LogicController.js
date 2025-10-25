@@ -304,34 +304,25 @@ class LogicController {
             await new Promise((resolve) => setTimeout(resolve, randomDelay));
 
             // Step 3: Ambil media dari URL (setelah delay)
-            /* const fileName = `wasend id ${kodeUnik}`;
-            const messageMedia = await MessageMedia.fromUrl(bodyData.file_url);
+            const messageMedia = await MessageMedia.fromUrl(bodyData.file_url, {
+                unsafeMime: true,
+                timeout: 20000,
+            });
+
+            let extension = "jpg";
+            if (!messageMedia || !messageMedia.data) {
+                console.log("Errroooorrr......");
+            } else {
+                extension = messageMedia.mimetype.split("/")[1];
+                console.log("messageMedia: ", messageMedia);
+            }
+            const fileName = `wasend id ${kodeUnik}.${extension}`;
+
             const contentMSG = new MessageMedia(
                 messageMedia.mimetype,
                 messageMedia.data,
                 fileName
-            ); */
-            const response = await axios.get(bodyData.file_url, {
-                responseType: "arraybuffer",
-                maxRedirects: 5,
-                headers: {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-                    Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-                    Referer: bodyData.file_url,
-                },
-            });
-
-            const mimeType = response.headers["content-type"];
-            const extension = mimeType?.split("/")[1] || "jpg"; // fallback safe
-            const fileName = `${
-                bodyData.file_name || "wasend-id-" + kodeUnik
-            }.${extension}`;
-
-            const base64Data = Buffer.from(response.data, "binary").toString(
-                "base64"
             );
-
-            const contentMSG = new MessageMedia(mimeType, base64Data, fileName);
 
             // Step 4: Kirim media
             const respMsg = await currentClient.sendMessage(
