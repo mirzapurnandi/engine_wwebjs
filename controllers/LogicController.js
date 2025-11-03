@@ -214,9 +214,9 @@ class LogicController {
                 .randomBytes(6)
                 .toString("base64")
                 .replace(/[^a-zA-Z0-9]/g, "")
-                .slice(0, 16);
+                .slice(0, 21);
 
-            const finalMessage = `${bodyData.message}\n\nkey:${kodeUnik}`;
+            const finalMessage = `${bodyData.message}\n${kodeUnik}`;
 
             // Step 2: Ambil chat dan tampilkan status mengetik
             const chat = await currentClient.getChatById(chatId);
@@ -284,9 +284,9 @@ class LogicController {
                 .randomBytes(6)
                 .toString("base64")
                 .replace(/[^a-zA-Z0-9]/g, "")
-                .slice(0, 15);
+                .slice(0, 21);
 
-            const finalCaption = `${bodyData.message}\n\nkey:${kodeUnik}`;
+            const finalCaption = `${bodyData.message}\n${kodeUnik}`;
 
             // Step 2: Simulasi typing
             const chat = await currentClient.getChatById(chatId);
