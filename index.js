@@ -61,7 +61,7 @@ setInterval(() => {
     Object.keys(client).forEach((id) => {
         healthCheck(id);
     });
-}, 50 * 1000);
+}, 600 * 1000);
 
 // === Global process event handler (hanya sekali) ===
 process.once("SIGINT", async () => {
