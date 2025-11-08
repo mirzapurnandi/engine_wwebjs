@@ -2,7 +2,7 @@
 # Script otomatis setup swap di Ubuntu untuk server 4 Core, 2GB RAM, 20GB storage
 # Swap size: 4G
 
-SWAP_SIZE=4G
+SWAP_SIZE=8G
 SWAP_FILE=/swapfile
 
 echo "=== Setup Swap ${SWAP_SIZE} ==="

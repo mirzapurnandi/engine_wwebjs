@@ -19,7 +19,7 @@ function getIndoTime() {
 // === Queue restart / init serial ===
 const restartQueue = new PQueue({
     concurrency: parseInt(process.env.RESTART_CONCURRENCY || "1", 10),
-    interval: parseInt(process.env.RESTART_INTERVAL || "8000", 10),
+    interval: parseInt(process.env.RESTART_INTERVAL || "10000", 10),
     intervalCap: 1,
 });
 
