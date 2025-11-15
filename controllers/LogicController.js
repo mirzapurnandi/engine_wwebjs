@@ -632,59 +632,48 @@ class LogicController {
             return res.status(400).json({
                 code: 400,
                 details: "Bad Request: id_instance is required.",
-                data: null,
             });
         }
 
         console.log(
-            `${getIndoTime()} [API] Received force restart request for instance: ${id_instance}`
+            `${getIndoTime()} [API] Received FORCE restart request for instance: ${id_instance}`
         );
 
         const currentClient = client[id_instance];
 
-        // 1. Validasi: Pastikan instance memang ada di memori aplikasi
         if (!currentClient) {
             return res.status(404).json({
                 code: 404,
-                details:
-                    "Instance not found in the current application state. It might not be initialized yet.",
-                data: null,
+                details: "Instance not found in the current application state.",
             });
         }
 
-        // 2. Validasi: Hindari restart jika sudah dalam proses restart
-        if (currentClient.isRefreshing) {
-            return res.status(409).json({
-                code: 409,
-                details:
-                    "Conflict: Instance is already in the process of restarting.",
-                data: null,
-            });
-        }
+        // =================================================================
+        // PERBAIKAN: Hapus pengecekan 'isRefreshing'.
+        // Permintaan manual harus selalu diutamakan untuk mengatasi instance macet.
+        // =================================================================
+        // if (currentClient.isRefreshing) { ... } // HAPUS BLOK INI
 
         try {
-            // 3. Panggil fungsi restart yang sudah aman (menggunakan queue)
+            console.log(
+                `[API] Forcefully queuing restart for stuck instance ${id_instance}.`
+            );
             await _scheduleRestart(id_instance);
 
-            // 4. Beri respons bahwa proses telah dimulai
             res.status(202).json({
                 code: 202,
                 details:
-                    "Accepted: The instance restart process has been queued.",
-                data: {
-                    id_instance: id_instance,
-                },
+                    "Accepted: The instance restart process has been forcefully queued.",
+                data: { id_instance },
             });
         } catch (error) {
             console.error(
-                `[API-RESTART] Error queuing restart for ${id_instance}:`,
+                `[API-RESTART] Error queuing force-restart for ${id_instance}:`,
                 error
             );
             res.status(500).json({
                 code: 500,
-                details:
-                    "Internal Server Error: Failed to queue the restart process.",
-                data: { error: error.message },
+                details: "Internal Server Error",
             });
         }
     };

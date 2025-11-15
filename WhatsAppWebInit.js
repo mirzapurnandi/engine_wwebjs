@@ -85,6 +85,7 @@ const initialize = async (uuid, isOpen = false) => {
     return new Promise((resolve, reject) => {
         client[uuid].on("qr", (qr) => {
             client[uuid].needsQr = true;
+            client[uuid].qrRequestTimestamp = Date.now();
             qrPlugin.toDataURL(qr, (err, src) => {
                 if (!err) {
                     fs.writeFile(
@@ -160,6 +161,9 @@ const initialize = async (uuid, isOpen = false) => {
 
         client[uuid].on("ready", () => {
             client[uuid].needsQr = false;
+            if (client[uuid].qrRequestTimestamp) {
+                delete client[uuid].qrRequestTimestamp;
+            }
             console.log(getIndoTime(), "[+] Ready:", uuid);
             deleteFile(__dirname + "/qr/qr_" + uuid + ".png");
             client[uuid].removeAllListeners("qr");
@@ -277,23 +281,19 @@ async function scheduleInitialize(uuid) {
 }
 
 async function _scheduleRestart(uuid) {
-    // Pengecekan awal yang lebih ketat
     const currentClient = client[uuid];
-    if (!currentClient || currentClient.isRefreshing) {
-        console.log(
-            `[QUEUE] Restart for ${uuid} skipped (not found or already refreshing).`
-        );
+    if (!currentClient) {
+        console.log(`[QUEUE] Restart for ${uuid} skipped (client not found).`);
         return;
     }
+
+    // PENTING: Set isRefreshing di objek yang sama yang akan kita gunakan
     currentClient.isRefreshing = true;
-    sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT");
+    sendWebHook(webHookURL, uuid, "INSTANCE", "RESTARTING");
 
     restartQueue.add(async () => {
-        console.log(`[QUEUE] Restarting instance ${uuid}...`);
+        console.log(`[QUEUE] Starting restart process for instance ${uuid}...`);
         try {
-            // =====================================================
-            // PERBAIKAN: Hanya destroy jika client object-nya valid
-            // =====================================================
             if (currentClient && typeof currentClient.destroy === "function") {
                 await currentClient.destroy().catch((e) => {
                     console.error(
@@ -302,20 +302,21 @@ async function _scheduleRestart(uuid) {
                     );
                 });
                 console.log(`[QUEUE] Client destroyed: ${uuid}`);
-            } else {
-                console.log(
-                    `[QUEUE] Client ${uuid} was not valid, skipping destroy.`
-                );
             }
-            // =====================================================
-
             await initialize(uuid, true);
-            console.log(`[QUEUE] Client re-initialized: ${uuid}`);
+            console.log(`[QUEUE] Client re-initialization queued: ${uuid}`);
         } catch (err) {
-            console.log(`[QUEUE] Restart failed for ${uuid}:`, err.message);
+            console.error(
+                `[QUEUE] FATAL restart failed for ${uuid}:`,
+                err.message
+            );
         } finally {
+            // Blok ini akan SELALU berjalan, baik sukses maupun gagal.
+            console.log(
+                `[QUEUE] Finished restart attempt for ${uuid}. Resetting refresh flag.`
+            );
             if (client[uuid]) {
-                // Cek lagi karena bisa gagal inisialisasi
+                // Cek lagi karena instance bisa saja gagal dibuat ulang
                 client[uuid].isRefreshing = false;
             }
         }
@@ -325,21 +326,33 @@ async function _scheduleRestart(uuid) {
 // === Health check ===
 async function healthCheck(uuid) {
     try {
-        if (!client[uuid]) return;
-        if (client[uuid]?.isRefreshing) return;
-        if (client[uuid].needsQr) {
-            console.log(`[HEALTH] ${uuid} is waiting for QR scan, skip check.`);
-            return;
+        if (!client[uuid] || client[uuid].isRefreshing) return;
+        if (client[uuid].needsQr && client[uuid].qrRequestTimestamp) {
+            const timeSinceQr = Date.now() - client[uuid].qrRequestTimestamp;
+
+            if (timeSinceQr > QR_TIMEOUT_MS) {
+                console.log(
+                    `[HEALTH] ${uuid} has been waiting for QR scan for too long (${Math.round(
+                        timeSinceQr / 1000
+                    )}s). Forcing restart...`
+                );
+                await _scheduleRestart(uuid);
+            } else {
+                console.log(
+                    `[HEALTH] ${uuid} is waiting for QR scan, skip check.`
+                );
+            }
+            return; // Hentikan pengecekan lebih lanjut untuk kasus ini
         }
 
         const state = await client[uuid].getState().catch(() => null);
         if (!state || state !== "CONNECTED") {
             console.log(
-                `[HEALTH] ${uuid} not connected, scheduling restart...`
+                `[HEALTH] ${uuid} is not connected (State: ${state}). Scheduling restart...`
             );
             await _scheduleRestart(uuid);
         } else {
-            console.log(`[HEALTH] ${uuid} is healthy`);
+            //console.log(`[HEALTH] ${uuid} is healthy`);
         }
     } catch (e) {
         console.log(`[HEALTH] Error checking ${uuid}:`, e.message);
