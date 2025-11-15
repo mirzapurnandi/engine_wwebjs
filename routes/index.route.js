@@ -34,4 +34,10 @@ router.post(
 router.post("/instance-refresh", checkHeader, logicController.instanceRefresh);
 router.post("/status", checkHeader, logicController.getStatus);
 
+router.post(
+    "/instance-force-restart",
+    checkHeader,
+    logicController.forceInstanceRestart
+);
+
 module.exports = router;

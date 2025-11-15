@@ -1,111 +1,147 @@
+// index.js (REFACTORED & FIXED)
+
 require("dotenv").config();
 const express = require("express");
+const mongoose = require("mongoose");
+const EventEmitter = require("events");
+
+// --- Konfigurasi Awal ---
 const app = express();
 const PORT = process.env.PORT || 3000;
-const EventEmitter = require("events");
-EventEmitter.defaultMaxListeners = 50; // Naikkan limit listener biar tidak keluar warning
+EventEmitter.defaultMaxListeners = 50;
 
+// --- Impor Modul Aplikasi ---
 const db = require("./config/configSqlite.db");
 const connectMongoose = require("./config/configMongoose.db");
-connectMongoose();
-
 const {
     client,
-    initialize,
-    healthCheck,
     scheduleInitialize,
+    healthCheck,
 } = require("./WhatsAppWebInit");
+const routes = require("./routes/index.route");
 
-// Middleware
+// --- Middleware ---
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Routes
-const routes = require("./routes/index.route");
+// --- Routes ---
 app.use(routes);
 
-// Buat table sessions jika belum ada
-const CREATE_TABLE_SESSION = `
-    CREATE TABLE IF NOT EXISTS sessions (
-        id_instance TEXT PRIMARY KEY
-    )
-`;
-db.run(CREATE_TABLE_SESSION, (error) => {
-    if (error) {
-        console.error("Error creating sessions table:", error);
-    } else {
-        console.log("Table sessions ready");
-    }
-});
+let server;
 
-// Load semua instance dari DB
-const SELECT_ALL_SESSION = "SELECT * FROM sessions";
-db.all(SELECT_ALL_SESSION, async (error, rows) => {
-    if (error) {
-        console.error("Error loading sessions:", error);
-        return;
-    }
-    if (rows.length > 0) {
-        for (const row of rows) {
-            initialize(row.id_instance);
-            // await scheduleInitialize(row.id_instance);
-            console.log("[+] Init Instance From DB :", row.id_instance);
-        }
-    } else {
-        console.error("Table sessions empty!");
-    }
-});
+const startApp = async () => {
+    try {
+        await connectMongoose();
 
-// Health check loop (global, sekali saja)
-setInterval(() => {
-    Object.keys(client).forEach((id) => {
-        healthCheck(id);
-    });
-}, 90 * 1000);
+        // =================================================================
+        // PERBAIKAN UTAMA: Gunakan db.serialize untuk mencegah race condition
+        // =================================================================
+        db.serialize(() => {
+            const CREATE_TABLE_SESSION = `CREATE TABLE IF NOT EXISTS sessions (id_instance TEXT PRIMARY KEY)`;
+            db.run(CREATE_TABLE_SESSION, (error) => {
+                if (error) {
+                    console.error(
+                        "Fatal: Error creating sessions table:",
+                        error
+                    );
+                    process.exit(1);
+                }
+                console.log("Table 'sessions' is ready.");
 
-// === Global process event handler (hanya sekali) ===
-process.once("SIGINT", async () => {
-    console.log("\n[!] Caught SIGINT, shutting down...");
+                // Jalankan SELECT HANYA SETELAH CREATE selesai
+                const SELECT_ALL_SESSION = "SELECT * FROM sessions";
+                db.all(SELECT_ALL_SESSION, (error, rows) => {
+                    if (error) {
+                        console.error("Error loading sessions from DB:", error);
+                        return;
+                    }
+                    if (rows.length > 0) {
+                        console.log(
+                            `[+] Found ${rows.length} sessions to initialize...`
+                        );
+                        for (const row of rows) {
+                            scheduleInitialize(row.id_instance);
+                        }
+                    } else {
+                        console.warn(
+                            "Table sessions is empty. No instances to initialize."
+                        );
+                    }
+                });
+            });
+        });
+        // =================================================================
+        // AKHIR PERBAIKAN
+        // =================================================================
 
-    // Hancurkan semua client WhatsApp
-    const destroyPromises = Object.keys(client).map(async (id) => {
-        try {
-            if (client[id]) {
-                await client[id].destroy();
-                console.log(`[+] Client destroyed: ${id}`);
+        setInterval(() => {
+            const activeClients = Object.keys(client);
+            if (activeClients.length > 0) {
+                activeClients.forEach((id) => healthCheck(id));
             }
-        } catch (e) {
-            console.error(`[!] Failed to destroy client: ${id}`, e.message);
-        }
-    });
+        }, 90 * 1000);
 
-    await Promise.all(destroyPromises);
+        const serverHost = process.env.SERVER || "http://localhost";
+        server = app
+            .listen(PORT, () => {
+                console.log(`Server is running on ${serverHost}:${PORT} ✅`);
+            })
+            .on("error", (err) => {
+                console.error("Server error:", err);
+                process.exit(1);
+            });
+    } catch (error) {
+        console.error("Failed to start the application:", error);
+        process.exit(1);
+    }
+};
 
-    // Tutup koneksi database
+const gracefulShutdown = async (signal) => {
+    // ... (kode gracefulShutdown tetap sama)
+    console.log(`\n[!] Received ${signal}, starting graceful shutdown...`);
+    if (server) {
+        server.close(() => console.log("[+] HTTP server closed."));
+    }
+    const clientIds = Object.keys(client);
+    if (clientIds.length > 0) {
+        console.log(`[+] Destroying ${clientIds.length} WhatsApp client(s)...`);
+        await Promise.all(
+            clientIds.map(async (id) => {
+                try {
+                    if (client[id]) {
+                        await client[id].destroy();
+                        console.log(`  - Client destroyed: ${id}`);
+                    }
+                } catch (e) {
+                    console.error(
+                        `  - Failed to destroy client ${id}:`,
+                        e.message
+                    );
+                }
+            })
+        );
+    }
+    try {
+        await mongoose.disconnect();
+        console.log("[+] Mongoose connection closed.");
+    } catch (error) {
+        console.error("[!] Error closing Mongoose connection:", error.message);
+    }
     db.close((err) => {
         if (err) {
-            console.error("Error closing SQLite DB:", err.message);
+            console.error("[!] Error closing SQLite DB:", err.message);
         } else {
             console.log("[+] SQLite DB connection closed.");
         }
+        console.log("[!] Shutdown complete. Exiting process.");
+        process.exit(0);
     });
+};
 
-    const mongoose = require("mongoose");
-    await mongoose.disconnect();
-    console.log("[+] Mongoose connection closed.");
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("exit", (code) =>
+    console.log(`[!] Process exiting with code: ${code}`)
+);
 
-    console.log("[!] Shutdown complete.");
-    process.exit(0);
-});
-
-process.once("exit", () => {
-    console.log("[!] Process exiting...");
-});
-
-// Start server
-const server = process.env.SERVER || "http://localhost";
-app.listen(PORT, () => {
-    console.log(`Server is running on ${server}:${PORT}`);
-}).on("error", (err) => {
-    console.error("Server error:", err);
-});
+startApp();

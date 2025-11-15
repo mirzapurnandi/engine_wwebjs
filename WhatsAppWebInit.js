@@ -65,7 +65,7 @@ const initialize = async (uuid, isOpen = false) => {
                 "--disable-software-rasterizer",
                 "--no-first-run",
                 "--no-zygote",
-                "--single-process", // Mungkin membantu mengurangi memori, tapi uji dampaknya
+                // "--single-process", // Mungkin membantu mengurangi memori, tapi uji dampaknya
                 "--disable-extensions",
                 "--disable-background-networking",
                 "--disable-sync",
@@ -119,8 +119,15 @@ const initialize = async (uuid, isOpen = false) => {
         client[uuid].on("auth_failure", async (msg) => {
             console.log(getIndoTime(), "[!] Auth Failure:", uuid, msg);
             sendWebHook(webHookURL, uuid, "INSTANCE", "AUTH_FAILURE");
-            await client[uuid].destroy().catch(() => {});
+
+            // Hancurkan client yang gagal
+            if (client[uuid]) {
+                await client[uuid].destroy().catch(() => {});
+                delete client[uuid]; // Hapus dari memori
+            }
+
             await deleteFolderSession(uuid);
+            // Reject promise untuk memberi tahu pemanggil bahwa inisialisasi gagal
             reject(new Error(`Auth failure on ${uuid}: ${msg}`));
         });
 
@@ -229,7 +236,18 @@ const initialize = async (uuid, isOpen = false) => {
             // agar tidak terjadi restart beruntun jika ada masalah jaringan.
         });
 
-        if (isOpen) client[uuid].initialize();
+        if (isOpen) {
+            // Tambahkan try...catch di sini sebagai lapisan pertahanan kedua
+            try {
+                client[uuid].initialize();
+            } catch (initError) {
+                console.error(
+                    `[!] Direct initialize call failed for ${uuid}:`,
+                    initError
+                );
+                reject(initError); // Pastikan promise di-reject jika ada error di sini
+            }
+        }
     });
 };
 
@@ -237,64 +255,71 @@ const initialize = async (uuid, isOpen = false) => {
 async function scheduleInitialize(uuid) {
     restartQueue.add(async () => {
         console.log(`[QUEUE] Booting instance ${uuid}...`);
+        // =================================================================
+        // PERBAIKAN UTAMA: Bungkus initialize dalam try...catch
+        // Ini akan mencegah seluruh aplikasi crash jika satu instance gagal.
+        // =================================================================
         try {
-            await initialize(uuid, true);
-            console.log(`[QUEUE] Instance ${uuid} initialized.`);
+            await initialize(uuid, true); // `true` untuk langsung initialize
+            console.log(
+                `[QUEUE] Instance ${uuid} initialization process started.`
+            );
         } catch (err) {
-            console.log(`[QUEUE] Failed init ${uuid}:`, err.message);
+            // Log error dengan detail, tapi jangan biarkan aplikasi crash.
+            console.error(
+                `[QUEUE] FATAL ERROR during initialize for ${uuid}:`,
+                err.message
+            );
+            // Anda bisa menambahkan notifikasi webhook di sini jika perlu
+            // sendWebHook(webHookURL, uuid, "INSTANCE", "INIT_FAILED");
         }
     });
 }
 
 async function _scheduleRestart(uuid) {
-    // Cek jika sudah ada di antrian atau sedang berjalan
-    if (restartQueue.pending > 0 || restartQueue.size > 0) {
-        const isQueued = [...restartQueue.iterator()].some(
-            (item) => item.id === uuid
+    // Pengecekan awal yang lebih ketat
+    const currentClient = client[uuid];
+    if (!currentClient || currentClient.isRefreshing) {
+        console.log(
+            `[QUEUE] Restart for ${uuid} skipped (not found or already refreshing).`
         );
-        if (isQueued) {
-            console.log(
-                `[QUEUE] Restart for ${uuid} is already queued. Skipping.`
-            );
-            return;
-        }
+        return;
     }
+    currentClient.isRefreshing = true;
+    sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT");
 
-    if (!client[uuid] || client[uuid].isRefreshing) return; // Pemeriksaan ganda
-    client[uuid].isRefreshing = true;
-
-    sendWebHook(webHookURL, uuid, "INSTANCE", "RESTARTING");
-
-    restartQueue.add(
-        async () => {
-            console.log(`[QUEUE] Restarting instance ${uuid}...`);
-            try {
-                // Hancurkan client lama sebelum inisialisasi baru
-                if (client[uuid]) {
-                    await client[uuid]
-                        .destroy()
-                        .catch((e) =>
-                            console.log(
-                                `Error destroying client ${uuid}: ${e.message}`
-                            )
-                        );
-                }
+    restartQueue.add(async () => {
+        console.log(`[QUEUE] Restarting instance ${uuid}...`);
+        try {
+            // =====================================================
+            // PERBAIKAN: Hanya destroy jika client object-nya valid
+            // =====================================================
+            if (currentClient && typeof currentClient.destroy === "function") {
+                await currentClient.destroy().catch((e) => {
+                    console.error(
+                        `[QUEUE] Error during destroy for ${uuid}:`,
+                        e.message
+                    );
+                });
                 console.log(`[QUEUE] Client destroyed: ${uuid}`);
-
-                // Inisialisasi ulang
-                await initialize(uuid, true);
-                console.log(`[QUEUE] Client restarted: ${uuid}`);
-            } catch (err) {
-                console.log(`[QUEUE] Restart failed for ${uuid}:`, err.message);
-            } finally {
-                // Pastikan instance masih ada sebelum mengakses propertinya
-                if (client[uuid]) {
-                    client[uuid].isRefreshing = false;
-                }
+            } else {
+                console.log(
+                    `[QUEUE] Client ${uuid} was not valid, skipping destroy.`
+                );
             }
-        },
-        { id: uuid }
-    ); // Tambahkan id unik ke task queue
+            // =====================================================
+
+            await initialize(uuid, true);
+            console.log(`[QUEUE] Client re-initialized: ${uuid}`);
+        } catch (err) {
+            console.log(`[QUEUE] Restart failed for ${uuid}:`, err.message);
+        } finally {
+            if (client[uuid]) {
+                // Cek lagi karena bisa gagal inisialisasi
+                client[uuid].isRefreshing = false;
+            }
+        }
+    });
 }
 
 // === Health check ===
