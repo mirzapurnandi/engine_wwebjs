@@ -606,10 +606,10 @@ class LogicController {
                 process.env.HOST_WEBHOOK,
                 id_instance,
                 "INSTANCE",
-                result
+                state
             );
             console.log(
-                `${getIndoTime()} [+] GET INSTANCE STATUS : ${id_instance}, STATE : ${result}`
+                `${getIndoTime()} [+] GET INSTANCE STATUS : ${id_instance}, STATE : ${state}`
             );
         } catch (error) {
             console.error(
