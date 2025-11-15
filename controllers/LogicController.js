@@ -602,6 +602,15 @@ class LogicController {
                 details: "Ok",
                 data: { state, info },
             });
+            sendWebHook(
+                process.env.HOST_WEBHOOK,
+                id_instance,
+                "INSTANCE",
+                result
+            );
+            console.log(
+                `${getIndoTime()} [+] GET INSTANCE STATUS : ${id_instance}, STATE : ${result}`
+            );
         } catch (error) {
             console.error(
                 `[getStatus] Error for ${id_instance}:`,
