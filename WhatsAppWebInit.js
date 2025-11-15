@@ -1,4 +1,5 @@
-const fs = require("fs");
+const fs = require("fs").promises;
+const { rm } = require("fs"); // untuk callback-based
 require("dotenv").config({ quiet: true });
 const { Client, MessageMedia, RemoteAuth } = require("whatsapp-web.js");
 const qrPlugin = require("qrcode");
@@ -53,7 +54,9 @@ const initialize = async (uuid, isOpen = false) => {
     client[uuid] = new Client({
         puppeteer: {
             headless: true,
-            executablePath: "/usr/bin/google-chrome-stable",
+            executablePath:
+                process.env.CHROME_EXECUTABLE_PATH ||
+                "/usr/bin/google-chrome-stable",
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -62,6 +65,12 @@ const initialize = async (uuid, isOpen = false) => {
                 "--disable-software-rasterizer",
                 "--no-first-run",
                 "--no-zygote",
+                "--single-process", // Mungkin membantu mengurangi memori, tapi uji dampaknya
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-sync",
+                "--metrics-recording-only",
+                "--mute-audio",
             ],
         },
         authStrategy: new RemoteAuth({
@@ -199,8 +208,25 @@ const initialize = async (uuid, isOpen = false) => {
         client[uuid].on("disconnected", async (reason) => {
             console.log(getIndoTime(), "[!] Disconnected:", uuid, reason);
             sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT");
-            await client[uuid].destroy().catch(() => {});
+
+            // Hancurkan client terlebih dahulu
+            if (client[uuid]) {
+                await client[uuid]
+                    .destroy()
+                    .catch((e) =>
+                        console.error(
+                            `Error destroying client ${uuid}:`,
+                            e.message
+                        )
+                    );
+                delete client[uuid]; // Hapus dari objek global
+            }
+
+            // Hapus cache service worker saja, jangan seluruh sesi kecuali auth gagal
             deleteFolderSWCache(uuid);
+
+            // Pertimbangkan untuk tidak otomatis restart di sini, biarkan healthCheck yang menanganinya
+            // agar tidak terjadi restart beruntun jika ada masalah jaringan.
         });
 
         if (isOpen) client[uuid].initialize();
@@ -221,23 +247,54 @@ async function scheduleInitialize(uuid) {
 }
 
 async function _scheduleRestart(uuid) {
-    if (!client[uuid]) return;
-    client[uuid].isRefreshing = true;
-    sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT");
-
-    restartQueue.add(async () => {
-        console.log(`[QUEUE] Restarting instance ${uuid}...`);
-        try {
-            await client[uuid].destroy().catch(() => {});
-            console.log(`[QUEUE] Client destroyed: ${uuid}`);
-            await initialize(uuid, true);
-            console.log(`[QUEUE] Client restarted: ${uuid}`);
-        } catch (err) {
-            console.log(`[QUEUE] Restart failed ${uuid}:`, err.message);
-        } finally {
-            if (client[uuid]) client[uuid].isRefreshing = false;
+    // Cek jika sudah ada di antrian atau sedang berjalan
+    if (restartQueue.pending > 0 || restartQueue.size > 0) {
+        const isQueued = [...restartQueue.iterator()].some(
+            (item) => item.id === uuid
+        );
+        if (isQueued) {
+            console.log(
+                `[QUEUE] Restart for ${uuid} is already queued. Skipping.`
+            );
+            return;
         }
-    });
+    }
+
+    if (!client[uuid] || client[uuid].isRefreshing) return; // Pemeriksaan ganda
+    client[uuid].isRefreshing = true;
+
+    sendWebHook(webHookURL, uuid, "INSTANCE", "RESTARTING");
+
+    restartQueue.add(
+        async () => {
+            console.log(`[QUEUE] Restarting instance ${uuid}...`);
+            try {
+                // Hancurkan client lama sebelum inisialisasi baru
+                if (client[uuid]) {
+                    await client[uuid]
+                        .destroy()
+                        .catch((e) =>
+                            console.log(
+                                `Error destroying client ${uuid}: ${e.message}`
+                            )
+                        );
+                }
+                console.log(`[QUEUE] Client destroyed: ${uuid}`);
+
+                // Inisialisasi ulang
+                await initialize(uuid, true);
+                console.log(`[QUEUE] Client restarted: ${uuid}`);
+            } catch (err) {
+                console.log(`[QUEUE] Restart failed for ${uuid}:`, err.message);
+            } finally {
+                // Pastikan instance masih ada sebelum mengakses propertinya
+                if (client[uuid]) {
+                    client[uuid].isRefreshing = false;
+                }
+            }
+        },
+        { id: uuid }
+    ); // Tambahkan id unik ke task queue
 }
 
 // === Health check ===
@@ -280,31 +337,43 @@ function deleteFile(path) {
 
 async function deleteFolderSession(uuid) {
     try {
-        fs.rmSync(`${__dirname}/.wwebjs_auth/RemoteAuth-${uuid}`, {
+        // Gunakan versi promise agar tidak blocking
+        await fs.rm(`${__dirname}/.wwebjs_auth/RemoteAuth-${uuid}`, {
             recursive: true,
             force: true,
         });
+
         const chunks = mongoose.connection.collection(
             `whatsapp-RemoteAuth-${uuid}.chunks`
         );
         const files = mongoose.connection.collection(
             `whatsapp-RemoteAuth-${uuid}.files`
         );
-        await chunks.drop().catch(() => {});
-        await files.drop().catch(() => {});
+
+        // Gunakan Promise.all untuk menjalankan penghapusan di DB secara paralel
+        await Promise.all([
+            chunks.drop().catch(() => {}),
+            files.drop().catch(() => {}),
+        ]);
+
+        console.log(`[+] Session data deleted for ${uuid}`);
     } catch (e) {
         console.log("[!] Error deleteFolderSession:", uuid, e.message);
     }
 }
 
 function deleteFolderSWCache(uuid) {
-    try {
-        fs.rm(
-            `${__dirname}/.wwebjs_auth/RemoteAuth-${uuid}/Default/Service Worker/ScriptCache`,
-            { recursive: true },
-            () => {}
-        );
-    } catch {}
+    // Gunakan callback-based rm yang non-blocking
+    const path = `${__dirname}/.wwebjs_auth/RemoteAuth-${uuid}/Default/Service Worker/ScriptCache`;
+    rm(path, { recursive: true, force: true }, (err) => {
+        if (err && err.code !== "ENOENT") {
+            // Jangan log error jika folder tidak ada
+            console.error(
+                `[!] Failed to delete SW Cache for ${uuid}:`,
+                err.message
+            );
+        }
+    });
 }
 
 async function sendWebHook(url, uuid, type, state = null, data = {}) {

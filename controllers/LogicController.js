@@ -93,30 +93,44 @@ class LogicController {
     }
 
     sendMessage = async (req, res) => {
-        const bodyData = req.body;
+        const { id_instance, destination, message } = req.body;
+        const currentClient = client[id_instance];
+
+        if (
+            !currentClient ||
+            (await currentClient.getState()) !== "CONNECTED"
+        ) {
+            return res.status(400).json({
+                code: 400,
+                details: "Instance not connected or not found.",
+                data: null,
+            });
+        }
+
         try {
-            const respMsg = await client[bodyData.id_instance].sendMessage(
-                `${bodyData.destination}@c.us`,
-                bodyData.message,
-                { waitUntilMsgSent: true }
-            );
+            const chatId = `${destination}@c.us`;
+            const respMsg = await currentClient.sendMessage(chatId, message);
 
             const response = {
                 code: 200,
                 details: "Ok",
                 data: {
-                    id_instance: bodyData.id_instance,
-                    destination: bodyData.destination,
-                    destination_in_wa: `${bodyData.destination}@c.us`,
+                    id_instance,
+                    destination,
                     id_message: respMsg.id.id,
                 },
             };
             res.status(200).json(response);
         } catch (error) {
+            console.error(
+                `[sendMessage] Error for ${id_instance}:`,
+                error.message
+            );
             const response = {
                 code: 500,
-                details: "Instance Not Available",
-                data: error,
+                details: "Failed to send message.",
+                // Kirim pesan error yang lebih informatif untuk debugging
+                data: { error: error.message },
             };
             res.status(500).json(response);
         }
@@ -568,50 +582,37 @@ class LogicController {
     };
 
     getStatus = async (req, res) => {
-        const idInstance = req.body.id_instance;
+        const { id_instance } = req.body;
+        const currentClient = client[id_instance];
+
+        if (!currentClient) {
+            return res.status(404).json({
+                code: 404,
+                details: "Instance not found",
+                data: null,
+            });
+        }
 
         try {
-            await client[idInstance]
-                .getState()
-                .then((result) => {
-                    let number = null;
-                    if (client[idInstance] && client[idInstance].info) {
-                        number = client[idInstance].info; // contoh: "6281234567890"
-                    }
-                    res.status(200).send({
-                        code: 200,
-                        details: "Ok",
-                        data: {
-                            state: result, // CONNECTED / DISCONNECTED
-                            info: number, // nomor WA login
-                        },
-                    });
+            const state = await currentClient.getState();
+            const info = currentClient.info || null;
 
-                    sendWebHook(
-                        process.env.HOST_WEBHOOK,
-                        idInstance,
-                        "INSTANCE",
-                        result
-                    );
-                    console.log(
-                        `${getIndoTime()} [+] GET INSTANCE STATUS : ${idInstance}, STATE : ${result}`
-                    );
-                })
-                .catch((err) => {
-                    res.status(500).send({
-                        code: 500,
-                        details: "Instance Not Response",
-                        data: err,
-                    });
-
-                    notifyDisconnect(idInstance); //send notify
-                });
-        } catch (e) {
-            res.status(500).send({
-                code: 500,
-                details: "Internal Server Error",
-                data: e,
+            res.status(200).json({
+                code: 200,
+                details: "Ok",
+                data: { state, info },
             });
+        } catch (error) {
+            console.error(
+                `[getStatus] Error for ${id_instance}:`,
+                error.message
+            );
+            res.status(500).json({
+                code: 500,
+                details: "Failed to get instance state.",
+                data: { error: error.message },
+            });
+            notifyDisconnect(id_instance); // Notifikasi jika ada error saat cek status
         }
     };
 }

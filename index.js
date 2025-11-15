@@ -61,21 +61,40 @@ setInterval(() => {
     Object.keys(client).forEach((id) => {
         healthCheck(id);
     });
-}, 50 * 1000);
+}, 90 * 1000);
 
 // === Global process event handler (hanya sekali) ===
 process.once("SIGINT", async () => {
     console.log("\n[!] Caught SIGINT, shutting down...");
 
-    for (const id of Object.keys(client)) {
+    // Hancurkan semua client WhatsApp
+    const destroyPromises = Object.keys(client).map(async (id) => {
         try {
-            await client[id].destroy();
-            console.log(`[+] Client destroyed: ${id}`);
+            if (client[id]) {
+                await client[id].destroy();
+                console.log(`[+] Client destroyed: ${id}`);
+            }
         } catch (e) {
             console.error(`[!] Failed to destroy client: ${id}`, e.message);
         }
-    }
+    });
 
+    await Promise.all(destroyPromises);
+
+    // Tutup koneksi database
+    db.close((err) => {
+        if (err) {
+            console.error("Error closing SQLite DB:", err.message);
+        } else {
+            console.log("[+] SQLite DB connection closed.");
+        }
+    });
+
+    const mongoose = require("mongoose");
+    await mongoose.disconnect();
+    console.log("[+] Mongoose connection closed.");
+
+    console.log("[!] Shutdown complete.");
     process.exit(0);
 });
 
