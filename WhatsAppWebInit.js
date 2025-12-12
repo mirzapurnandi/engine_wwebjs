@@ -285,7 +285,7 @@ async function scheduleInitialize(uuid) {
     });
 }
 
-/* async function _scheduleRestart(uuid) {
+async function _scheduleRestart(uuid) {
     const currentClient = client[uuid];
     if (!currentClient) {
         console.log(`[QUEUE] Restart for ${uuid} skipped (client not found).`);
@@ -326,9 +326,9 @@ async function scheduleInitialize(uuid) {
             }
         }
     });
-} */
+}
 
-async function _scheduleRestart(uuid) {
+/* async function _scheduleRestart(uuid) {
     const currentClient = client[uuid];
 
     if (!currentClient) {
@@ -382,10 +382,10 @@ async function _scheduleRestart(uuid) {
             if (client[uuid]) client[uuid].isRefreshing = false;
         }
     });
-}
+} */
 
 // === Health check ===
-/* async function healthCheck(uuid) {
+async function healthCheck(uuid) {
     try {
         if (!client[uuid] || client[uuid].isRefreshing) return;
         if (client[uuid].needsQr && client[uuid].qrRequestTimestamp) {
@@ -419,9 +419,9 @@ async function _scheduleRestart(uuid) {
         console.log(`[HEALTH] Error checking ${uuid}:`, e.message);
         await _scheduleRestart(uuid);
     }
-} */
+}
 
-async function healthCheck(uuid) {
+/* async function healthCheck(uuid) {
     try {
         // Skip jika instance sedang restart
         if (!client[uuid] || client[uuid].isRefreshing) return;
@@ -451,7 +451,7 @@ async function healthCheck(uuid) {
         console.log(`[HEALTH] ${uuid} error:`, e.message);
         return _scheduleRestart(uuid);
     }
-}
+} */
 
 // === Utils ===
 function setOnline(uuid) {
