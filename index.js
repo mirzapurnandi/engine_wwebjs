@@ -79,7 +79,7 @@ const startApp = async () => {
             if (activeClients.length > 0) {
                 activeClients.forEach((id) => healthCheck(id));
             }
-        }, 90 * 1000);
+        }, 120 * 1000);
 
         const serverHost = process.env.SERVER || "http://localhost";
         server = app
