@@ -17,10 +17,13 @@ function getIndoTime() {
     return moment().tz("Asia/Jakarta").format("dddd, D MMMM YYYY HH:mm:ss");
 }
 
+// === Cooldown & Server Limits ===
+const RESTART_COOLDOWN_MS = 2 * 60 * 1000; // cooldown restart 2 menit
+
 // === Queue restart / init serial ===
 const restartQueue = new PQueue({
     concurrency: parseInt(process.env.RESTART_CONCURRENCY || "1", 10),
-    interval: parseInt(process.env.RESTART_INTERVAL || "10000", 10),
+    interval: parseInt(process.env.RESTART_INTERVAL || "60000", 10),
     intervalCap: 1,
 });
 
@@ -55,7 +58,7 @@ const initialize = async (uuid, isOpen = false) => {
     const store = new MongoStore({ mongoose });
     client[uuid] = new Client({
         puppeteer: {
-            headless: true,
+            headless: false,
             executablePath:
                 process.env.CHROME_EXECUTABLE_PATH ||
                 "/usr/bin/google-chrome-stable",
@@ -282,7 +285,7 @@ async function scheduleInitialize(uuid) {
     });
 }
 
-async function _scheduleRestart(uuid) {
+/* async function _scheduleRestart(uuid) {
     const currentClient = client[uuid];
     if (!currentClient) {
         console.log(`[QUEUE] Restart for ${uuid} skipped (client not found).`);
@@ -323,10 +326,66 @@ async function _scheduleRestart(uuid) {
             }
         }
     });
+} */
+
+async function _scheduleRestart(uuid) {
+    const currentClient = client[uuid];
+
+    if (!currentClient) {
+        console.log(`[QUEUE] Restart for ${uuid} skipped (client not found).`);
+        return;
+    }
+
+    // === Anti-Loop Restart ===
+    if (!currentClient.lastRestartAt) {
+        currentClient.lastRestartAt = 0;
+    }
+
+    const sinceLast = Date.now() - currentClient.lastRestartAt;
+    if (sinceLast < RESTART_COOLDOWN_MS) {
+        console.log(
+            `[RESTART] Cooldown active for ${uuid}. Wait ${Math.round(
+                (RESTART_COOLDOWN_MS - sinceLast) / 1000
+            )}s`
+        );
+        return;
+    }
+
+    // === Set timestamp sekarang ===
+    currentClient.lastRestartAt = Date.now();
+    currentClient.isRefreshing = true;
+
+    sendWebHook(webHookURL, uuid, "INSTANCE", "RESTARTING");
+
+    restartQueue.add(async () => {
+        console.log(`[QUEUE] Restarting instance ${uuid}...`);
+
+        try {
+            if (currentClient && typeof currentClient.destroy === "function") {
+                await currentClient
+                    .destroy()
+                    .catch((e) =>
+                        console.error(
+                            `[QUEUE] Error destroying ${uuid}:`,
+                            e.message
+                        )
+                    );
+            }
+
+            delete client[uuid];
+
+            await initialize(uuid, true);
+            console.log(`[QUEUE] Restart complete for ${uuid}`);
+        } catch (err) {
+            console.error(`[QUEUE] Restart failed for ${uuid}:`, err.message);
+        } finally {
+            if (client[uuid]) client[uuid].isRefreshing = false;
+        }
+    });
 }
 
 // === Health check ===
-async function healthCheck(uuid) {
+/* async function healthCheck(uuid) {
     try {
         if (!client[uuid] || client[uuid].isRefreshing) return;
         if (client[uuid].needsQr && client[uuid].qrRequestTimestamp) {
@@ -359,6 +418,38 @@ async function healthCheck(uuid) {
     } catch (e) {
         console.log(`[HEALTH] Error checking ${uuid}:`, e.message);
         await _scheduleRestart(uuid);
+    }
+} */
+
+async function healthCheck(uuid) {
+    try {
+        // Skip jika instance sedang restart
+        if (!client[uuid] || client[uuid].isRefreshing) return;
+
+        // === Untuk QR yang tidak discan ===
+        if (client[uuid].needsQr && client[uuid].qrRequestTimestamp) {
+            const diff = Date.now() - client[uuid].qrRequestTimestamp;
+
+            if (diff > QR_TIMEOUT_MS) {
+                console.log(`[HEALTH] ${uuid} QR timeout. Restarting...`);
+                return _scheduleRestart(uuid);
+            }
+
+            return; // tunggu saja
+        }
+
+        // === cek state ===
+        const state = await client[uuid].getState().catch(() => null);
+
+        if (!state || state !== "CONNECTED") {
+            console.log(
+                `[HEALTH] ${uuid} unhealthy (state=${state}). Restarting...`
+            );
+            return _scheduleRestart(uuid);
+        }
+    } catch (e) {
+        console.log(`[HEALTH] ${uuid} error:`, e.message);
+        return _scheduleRestart(uuid);
     }
 }
 
