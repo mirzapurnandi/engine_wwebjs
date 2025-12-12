@@ -23,7 +23,7 @@ const RESTART_COOLDOWN_MS = 2 * 60 * 1000; // cooldown restart 2 menit
 // === Queue restart / init serial ===
 const restartQueue = new PQueue({
     concurrency: parseInt(process.env.RESTART_CONCURRENCY || "1", 10),
-    interval: parseInt(process.env.RESTART_INTERVAL || "60000", 10),
+    interval: parseInt(process.env.RESTART_INTERVAL || "30000", 10),
     intervalCap: 1,
 });
 
