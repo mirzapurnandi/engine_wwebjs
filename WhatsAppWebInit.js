@@ -58,7 +58,7 @@ const initialize = async (uuid, isOpen = false) => {
     const store = new MongoStore({ mongoose });
     client[uuid] = new Client({
         puppeteer: {
-            headless: false,
+            headless: true,
             executablePath:
                 process.env.CHROME_EXECUTABLE_PATH ||
                 "/usr/bin/google-chrome-stable",
