@@ -63,13 +63,16 @@ const initialize = async (uuid, isOpen = false) => {
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-gpu",
-                "--disable-dev-shm-usage",
+                // "--disable-dev-shm-usage",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+
                 "--disable-software-rasterizer",
                 "--no-first-run",
                 "--no-zygote",
                 // "--single-process", // Mungkin membantu mengurangi memori, tapi uji dampaknya
                 "--disable-extensions",
-                "--disable-background-networking",
+                // "--disable-background-networking",
                 "--disable-sync",
                 "--metrics-recording-only",
                 "--mute-audio",
