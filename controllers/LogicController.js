@@ -302,7 +302,7 @@ class LogicController {
                 .slice(0, 21);
 
             // const finalCaption = `${bodyData.message}\n${kodeUnik}`;
-            const finalCaption = bodyData.messages;
+            const finalCaption = bodyData.message;
 
             // Step 2: Simulasi typing
             const chat = await currentClient.getChatById(chatId);
