@@ -230,7 +230,8 @@ class LogicController {
                 .replace(/[^a-zA-Z0-9]/g, "")
                 .slice(0, 21);
 
-            const finalMessage = `${bodyData.message}\n${kodeUnik}`;
+            // const finalMessage = `${bodyData.message}\n${kodeUnik}`;
+            const finalMessage = bodyData.message;
 
             // Step 2: Ambil chat dan tampilkan status mengetik
             const chat = await currentClient.getChatById(chatId);
@@ -300,7 +301,8 @@ class LogicController {
                 .replace(/[^a-zA-Z0-9]/g, "")
                 .slice(0, 21);
 
-            const finalCaption = `${bodyData.message}\n${kodeUnik}`;
+            // const finalCaption = `${bodyData.message}\n${kodeUnik}`;
+            const finalCaption = bodyData.messages;
 
             // Step 2: Simulasi typing
             const chat = await currentClient.getChatById(chatId);
