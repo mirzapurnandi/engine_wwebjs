@@ -55,21 +55,25 @@ const initialize = async (uuid, isOpen = false) => {
     const store = new MongoStore({ mongoose });
     client[uuid] = new Client({
         puppeteer: {
-            headless: true,
+            headless: "new",
             executablePath:
                 process.env.CHROME_EXECUTABLE_PATH ||
                 "/usr/bin/google-chrome-stable",
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--disable-gpu",
-                // "--disable-dev-shm-usage",
-                "--disable-backgrounding-occluded-windows",
-                "--disable-renderer-backgrounding",
-
-                "--disable-software-rasterizer",
+                "--disable-dev-shm-usage",
+                "--disable-accelerated-2d-canvas",
                 "--no-first-run",
                 "--no-zygote",
+                "--disable-gpu",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+
+                "--disable-software-rasterizer",
+
                 // "--single-process", // Mungkin membantu mengurangi memori, tapi uji dampaknya
                 "--disable-extensions",
                 // "--disable-background-networking",
