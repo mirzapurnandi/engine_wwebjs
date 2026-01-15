@@ -20,7 +20,7 @@ function getIndoTime() {
 // === Queue restart / init serial ===
 const restartQueue = new PQueue({
     concurrency: parseInt(process.env.RESTART_CONCURRENCY || "1", 10),
-    interval: parseInt(process.env.RESTART_INTERVAL || "60000", 10),
+    interval: parseInt(process.env.RESTART_INTERVAL || "30000", 10),
     intervalCap: 1,
 });
 
@@ -70,22 +70,24 @@ const initialize = async (uuid, isOpen = false) => {
                 "--disable-backgrounding-occluded-windows",
                 "--disable-renderer-backgrounding",
                 "--disable-background-timer-throttling",
-                "--disable-backgrounding-occluded-windows",
-
                 "--disable-software-rasterizer",
-
-                // "--single-process", // Mungkin membantu mengurangi memori, tapi uji dampaknya
                 "--disable-extensions",
-                // "--disable-background-networking",
-                "--disable-sync",
-                "--metrics-recording-only",
+                "--disable-client-side-phishing-detection",
                 "--mute-audio",
+                "--disable-default-apps",
+                "--no-default-browser-check",
+                "--disable-site-isolation-trials",
+                /* "--proxy-server='direct://'",
+                "--proxy-bypass-list=*",
+                "--disable-default-apps",
+                "--window-size=1280,800", */ // Memaksa ukuran window agar render konsisten
             ],
         },
         authStrategy: new RemoteAuth({
             clientId: uuid,
             store,
-            backupSyncIntervalMs: 1000 * 60 * 60,
+            backupSyncIntervalMs: 1000 * 60 * 60 * 6,
+            dataPath: "./.wwebjs_auth", // Pastikan path lokal jelas
         }),
     });
 
@@ -277,6 +279,7 @@ async function scheduleInitialize(uuid) {
             console.log(
                 `[QUEUE] Instance ${uuid} initialization process started.`
             );
+            await new Promise((resolve) => setTimeout(resolve, 5000));
         } catch (err) {
             // Log error dengan detail, tapi jangan biarkan aplikasi crash.
             console.error(
