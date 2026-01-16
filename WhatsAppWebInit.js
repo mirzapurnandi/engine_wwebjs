@@ -77,11 +77,17 @@ const initialize = async (uuid, isOpen = false) => {
                 "--disable-default-apps",
                 "--no-default-browser-check",
                 "--disable-site-isolation-trials",
+                "--disable-popup-blocking",
                 /* "--proxy-server='direct://'",
                 "--proxy-bypass-list=*",
                 "--disable-default-apps",
                 "--window-size=1280,800", */ // Memaksa ukuran window agar render konsisten
             ],
+        },
+        // temp
+        webVersionCache: {
+            type: "remote",
+            remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html`,
         },
         authStrategy: new RemoteAuth({
             clientId: uuid,
