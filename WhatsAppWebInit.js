@@ -400,7 +400,14 @@ async function _scheduleRestart(uuid) {
 // === Health check ===
 async function healthCheck(uuid) {
     try {
-        if (!client[uuid] || client[uuid].isRefreshing) return;
+        if (!client[uuid]) {
+            console.log(
+                `[HEALTH] Instance ${uuid} is missing/dead. Scheduling restart...`,
+            );
+            return _scheduleRestart(uuid);
+        }
+        if (client[uuid].isRefreshing) return;
+
         if (client[uuid].needsQr && client[uuid].qrRequestTimestamp) {
             const timeSinceQr = Date.now() - client[uuid].qrRequestTimestamp;
 
