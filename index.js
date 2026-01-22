@@ -17,7 +17,7 @@ const {
     client,
     scheduleInitialize,
     healthCheck,
-} = require("./WhatsAppWebInit-edit");
+} = require("./WhatsAppWebInit");
 const routes = require("./routes/index.route");
 
 // --- Middleware ---
