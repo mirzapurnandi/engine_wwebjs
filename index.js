@@ -42,7 +42,7 @@ const startApp = async () => {
                 if (error) {
                     console.error(
                         "Fatal: Error creating sessions table:",
-                        error
+                        error,
                     );
                     process.exit(1);
                 }
@@ -57,14 +57,14 @@ const startApp = async () => {
                     }
                     if (rows.length > 0) {
                         console.log(
-                            `[+] Found ${rows.length} sessions to initialize...`
+                            `[+] Found ${rows.length} sessions to initialize...`,
                         );
                         for (const row of rows) {
                             scheduleInitialize(row.id_instance);
                         }
                     } else {
                         console.warn(
-                            "Table sessions is empty. No instances to initialize."
+                            "Table sessions is empty. No instances to initialize.",
                         );
                     }
                 });
@@ -115,10 +115,10 @@ const gracefulShutdown = async (signal) => {
                 } catch (e) {
                     console.error(
                         `  - Failed to destroy client ${id}:`,
-                        e.message
+                        e.message,
                     );
                 }
-            })
+            }),
         );
     }
     try {
@@ -141,7 +141,7 @@ const gracefulShutdown = async (signal) => {
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("exit", (code) =>
-    console.log(`[!] Process exiting with code: ${code}`)
+    console.log(`[!] Process exiting with code: ${code}`),
 );
 
 startApp();

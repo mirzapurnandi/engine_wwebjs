@@ -8,7 +8,7 @@ const {
     deleteFolderSWCache,
     sendWebHook,
     _scheduleRestart,
-} = require("../WhatsAppWebInit");
+} = require("../WhatsAppWebInit-old");
 
 const { Buttons, List, MessageMedia } = require("whatsapp-web.js");
 const fs = require("fs");
@@ -69,35 +69,25 @@ class LogicController {
         });
     }
 
-    // DELETE SESSION: Menghapus dari DB saat user menghapus instance lewat API
     async deleteSession(req, res) {
         const id_instance = req.params.id_instance;
         const DELETE_SESSION = "DELETE FROM sessions WHERE id_instance = ?";
+        db.serialize(() => {
+            db.run(DELETE_SESSION, [id_instance], (error) => {
+                if (error) {
+                    console.log(error);
+                } else {
+                    if (dataClient.includes(id_instance)) {
+                        client[id_instance].destroy();
+                        deleteFolderSession(id_instance);
+                    }
+                    console.log("[-] Delete Instance : " + id_instance);
 
-        // Hapus dari SQLite
-        db.run(DELETE_SESSION, [id_instance], async (error) => {
-            if (error) {
-                console.log(error);
-                return res.status(500).json({ message: "DB Error" });
-            }
-
-            // Lakukan pembersihan total
-            console.log("[-] Delete Instance Requested : " + id_instance);
-
-            // Hancurkan client
-            if (client[id_instance]) {
-                await client[id_instance].destroy().catch(() => {});
-                delete client[id_instance];
-            }
-
-            // Hapus file fisik dan Mongo
-            await deleteFolderSession(id_instance);
-            deleteFolderSWCache(id_instance);
-            deleteFile(__dirname + "/qr/qr_" + id_instance + ".png");
-
-            res.status(200).json({
-                message: "Session deleted permanently",
-                id_instance: id_instance,
+                    res.status(200).json({
+                        message: "Session deleted",
+                        id_instance: id_instance,
+                    });
+                }
             });
         });
     }
@@ -483,41 +473,148 @@ class LogicController {
         }
     };
 
-    // REDEPLOY: Hapus sesi total dan minta scan QR baru (Reset)
     instanceRedeploy = async (req, res) => {
         const bodyData = req.body;
-        const id_instance = bodyData.id_instance;
+        try {
+            if (!client[bodyData.id_instance]) {
+                res.status(400).send({
+                    code: 400,
+                    details: "Instance tidak ditemukan",
+                    data: [],
+                });
+            } else {
+                await client[bodyData.id_instance].destroy();
+                const state = "DISCONNECT";
+                sendWebHook(
+                    process.env.HOST_WEBHOOK,
+                    bodyData.id_instance,
+                    "INSTANCE",
+                    state,
+                );
 
-        console.log(
-            `${getIndoTime()} [API] Redeploy/Reset Request: ${id_instance}`,
-        );
+                deleteFolderSession(bodyData.id_instance);
+                deleteFile(
+                    __dirname + "/qr/qr_" + bodyData.id_instance + ".png",
+                );
 
-        res.status(200).json({
-            code: 200,
-            details: "Redeploy request accepted. Session will be cleared.",
-            data: { id_instance },
-        });
+                res.status(200).send({
+                    code: 200,
+                    details: "Ok",
+                    data: [],
+                });
+            }
+        } catch (error) {
+            console.log(error);
 
-        // forceClean = true (Hapus DB & File, minta QR baru)
-        await _scheduleRestart(id_instance, true);
+            res.status(500).send({
+                code: 500,
+                details: "Internal Server Error!",
+                data: error,
+            });
+        }
     };
 
-    // REFRESH: Restart tapi coba pertahankan sesi (hanya refresh browser)
     instanceRefresh = async (req, res) => {
-        const { id_instance } = req.body;
+        const idInstance = req.body.id_instance;
+        try {
+            console.log(
+                `${getIndoTime()} [+] Processing Refresh WA Page, Instance ID : ${idInstance}`,
+            );
 
-        console.log(`${getIndoTime()} [API] Refresh Request: ${id_instance}`);
+            deleteFolderSWCache(idInstance);
 
-        // Kirim response dulu agar tidak timeout
-        res.status(200).json({
-            code: 200,
-            details: "Refresh request accepted. Processing in background.",
-            data: { id_instance },
-        });
+            const state = "DISCONNECT";
+            sendWebHook(
+                process.env.HOST_WEBHOOK,
+                idInstance,
+                "INSTANCE",
+                state,
+            );
 
-        // Panggil fungsi restart aman.
-        // forceClean = false (jangan logout, cuma restart browser)
-        await _scheduleRestart(id_instance, false);
+            dataClient.push(idInstance);
+            await _scheduleRestart(idInstance);
+
+            res.status(200).send({
+                code: 200,
+                details: "Processing",
+                data: [],
+            });
+
+            /* eventLocal.once(idInstance, async function (payload) {
+                if (payload == "ACTIVE") {
+                    client[idInstance].isRefreshing = true;
+                    try {
+                        console.log(
+                            dateTime +
+                                " [CLEANING] Cleaning WA Page , Instance ID : " +
+                                idInstance
+                        );
+
+                        const mainPage = await client[
+                            idInstance
+                        ].pupBrowser.newPage();
+                        await z.goto("https://web.whatsapp.com", {
+                            waitUntil: "load",
+                            timeout: 0,
+                            referer: "https://whatsapp.com/",
+                        });
+                        console.log(
+                            dateTime +
+                                " [CLEANING] Success Cleaning WA Page, Instance ID : " +
+                                idInstance
+                        );
+                        await sleep(5000);
+
+                        await mainPage.screenshot({
+                            fullPage: true,
+                            path:
+                                __dirname +
+                                "/" +
+                                dirScreenShot +
+                                "/" +
+                                idInstance +
+                                ".png",
+                        });
+
+                        await mainPage.close();
+
+                        //if (dataClient.includes(idInstance)) {
+                        client[idInstance].destroy();
+                        client[idInstance].initialize();
+                        //deleteFolderSWCache(idInstance);
+                        //}
+
+                        //notify ready to scan
+                        state = "READY_SCAN";
+                        sendWebHook(
+                            process.env.HOST_WEBHOOK,
+                            idInstance,
+                            "INSTANCE",
+                            state
+                        );
+
+                        console.log(
+                            dateTime +
+                                " [REFRESH] Success Refresh WA Page, Instance ID : " +
+                                idInstance
+                        );
+                    } catch (e) {
+                        console.log(
+                            dateTime +
+                                " [REFRESH FAILED] Failed Refresh WA Page, Instance ID : " +
+                                idInstance
+                        );
+                    }
+                }
+            }); */
+            //}
+        } catch (e) {
+            res.status(500).send({
+                code: 500,
+                details: "Internal Server Error",
+                data: e,
+            });
+        }
     };
 
     getStatus = async (req, res) => {
@@ -564,21 +661,57 @@ class LogicController {
         }
     };
 
-    // FORCE RESTART: Sama seperti Refresh, tapi eksplisit
     forceInstanceRestart = async (req, res) => {
         const { id_instance } = req.body;
 
+        if (!id_instance) {
+            return res.status(400).json({
+                code: 400,
+                details: "Bad Request: id_instance is required.",
+            });
+        }
+
         console.log(
-            `${getIndoTime()} [API] Force Restart Request: ${id_instance}`,
+            `${getIndoTime()} [API] Received FORCE restart request for instance: ${id_instance}`,
         );
 
-        res.status(200).json({
-            code: 200,
-            details: "Force restart executing...",
-            data: { id_instance },
-        });
+        const currentClient = client[id_instance];
 
-        await _scheduleRestart(id_instance, false);
+        if (!currentClient) {
+            return res.status(404).json({
+                code: 404,
+                details: "Instance not found in the current application state.",
+            });
+        }
+
+        // =================================================================
+        // PERBAIKAN: Hapus pengecekan 'isRefreshing'.
+        // Permintaan manual harus selalu diutamakan untuk mengatasi instance macet.
+        // =================================================================
+        // if (currentClient.isRefreshing) { ... } // HAPUS BLOK INI
+
+        try {
+            console.log(
+                `[API] Forcefully queuing restart for stuck instance ${id_instance}.`,
+            );
+            await _scheduleRestart(id_instance);
+
+            res.status(202).json({
+                code: 202,
+                details:
+                    "Accepted: The instance restart process has been forcefully queued.",
+                data: { id_instance },
+            });
+        } catch (error) {
+            console.error(
+                `[API-RESTART] Error queuing force-restart for ${id_instance}:`,
+                error,
+            );
+            res.status(500).json({
+                code: 500,
+                details: "Internal Server Error",
+            });
+        }
     };
 }
 
