@@ -8,7 +8,7 @@ const {
     deleteFolderSWCache,
     sendWebHook,
     _scheduleRestart,
-} = require("../WhatsAppWebInit-old");
+} = require("../WhatsAppWebInit");
 
 const { Buttons, List, MessageMedia } = require("whatsapp-web.js");
 const fs = require("fs");
