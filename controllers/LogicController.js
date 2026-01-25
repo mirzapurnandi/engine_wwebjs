@@ -105,6 +105,21 @@ class LogicController {
 
         try {
             const chatId = `${destination}@c.us`;
+
+            // --- PANGGIL FUNGSI CHECKING ---
+            const check = await this.checkingDestination(
+                currentClient,
+                chatId,
+                destination,
+            );
+            if (!check.status) {
+                return res.status(check.code).json({
+                    code: check.code,
+                    details: check.details,
+                    data: { destination: destination },
+                });
+            }
+
             const respMsg = await currentClient.sendMessage(chatId, message);
 
             const response = {
@@ -203,6 +218,52 @@ class LogicController {
         return { minDelay, maxDelay, randomDelay };
     };
 
+    checkingDestination = async (currentClient, chatId, destination) => {
+        // 1. Cek apakah nomor terdaftar di WhatsApp
+        const isRegistered = await currentClient.isRegisteredUser(chatId);
+        if (!isRegistered) {
+            return {
+                status: false,
+                code: 400,
+                details: `Rejected: Number ${destination} is not registered on WhatsApp.`,
+            };
+        }
+
+        // 2. Cek Foto Profil (Filter Akun Aktif)
+        try {
+            const profilePicUrl = await currentClient.getProfilePicUrl(chatId);
+            if (!profilePicUrl) {
+                console.log(
+                    `[Validation] Warning: ${destination} has no profile picture.`,
+                );
+                // Jika ingin reject nomor tanpa foto, kembalikan status false di sini
+            }
+        } catch (e) {
+            console.log(
+                `[Validation] Profile pic fetch failed for ${destination}, continuing...`,
+            );
+        }
+
+        return { status: true };
+    };
+
+    processSpintax = (text) => {
+        // Mencari pola {kata1|kata2|kata3}
+        const matches = text.match(/{[^{}]*}/g);
+        if (!matches) return text;
+
+        for (const match of matches) {
+            // Menghapus kurung kurawal dan memisahkan kata berdasarkan pipa (|)
+            const choices = match.slice(1, -1).split("|");
+            // Pilih satu secara acak
+            const randomChoice =
+                choices[Math.floor(Math.random() * choices.length)];
+            // Ganti bagian spintax dengan pilihan acak
+            text = text.replace(match, randomChoice);
+        }
+        return text;
+    };
+
     sendMessageWithTyping = async (req, res) => {
         const bodyData = req.body;
 
@@ -220,13 +281,34 @@ class LogicController {
                 });
             }
 
+            // --- PANGGIL FUNGSI CHECKING ---
+            const check = await this.checkingDestination(
+                currentClient,
+                chatId,
+                bodyData.destination,
+            );
+            if (!check.status) {
+                return res.status(check.code).json({
+                    code: check.code,
+                    details: check.details,
+                    data: { destination: bodyData.destination },
+                });
+            }
+
+            const spintaxFooter =
+                "{Balas|Respon|Tolong balas} pesan ini {agar|supaya} {saling berinteraksi|akun tetap aktif|terjalin komunikasi} dan {menjaga|memastikan} akun ini {tetap aktif|tidak terblokir|aman}. {kode|unik|rand|log}:";
+
+            // Memproses spintax agar kalimat footer acak
+            const randomFooter = this.processSpintax(spintaxFooter);
+
             const kodeUnik = crypto
                 .randomBytes(6)
                 .toString("base64")
                 .replace(/[^a-zA-Z0-9]/g, "")
                 .slice(0, 21);
 
-            const finalMessage = `${bodyData.message}\nBalas pesan ini agar saling berinteraksi dan menjaga akun ini tetap aktif. ${kodeUnik}`;
+            const finalMessage = `${bodyData.message}\n\n${randomFooter}${kodeUnik}`;
+            //const finalMessage = `${bodyData.message}\n\nBalas pesan ini agar saling berinteraksi dan menjaga akun ini tetap aktif. ${kodeUnik}`;
             // const finalMessage = bodyData.message;
 
             // Step 2: Ambil chat dan tampilkan status mengetik
@@ -301,12 +383,6 @@ class LogicController {
                 id_transaction: idTransaction,
                 error: error.message,
             });
-
-            res.status(500).json({
-                code: 500,
-                details: "Failed to send message",
-                data: error,
-            });
         }
     };
 
@@ -323,6 +399,20 @@ class LogicController {
                     code: 404,
                     details: "Instance not found",
                     data: [],
+                });
+            }
+
+            // --- PANGGIL FUNGSI CHECKING ---
+            const check = await this.checkingDestination(
+                currentClient,
+                chatId,
+                bodyData.destination,
+            );
+            if (!check.status) {
+                return res.status(check.code).json({
+                    code: check.code,
+                    details: check.details,
+                    data: { destination: bodyData.destination },
                 });
             }
 

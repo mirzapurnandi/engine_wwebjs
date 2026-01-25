@@ -41,7 +41,6 @@ restartQueue.on("error", (error) => {
 let client = {};
 const webHookURL = process.env.HOST_WEBHOOK;
 const authToken = process.env.AUTH_TOKEN;
-const MONGODB_URI = process.env.MONGODB_URI;
 
 const QR_TIMEOUT_MS = 50 * 60 * 1000; // 50 menit
 
