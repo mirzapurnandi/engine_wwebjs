@@ -5,7 +5,6 @@ const {
     notifyDisconnect,
     deleteFolderSession,
     deleteFile,
-    deleteFolderSWCache,
     sendWebHook,
     _scheduleRestart,
 } = require("../WhatsAppWebInit");
@@ -15,9 +14,6 @@ const fs = require("fs");
 const path = require("path");
 
 const crypto = require("crypto");
-
-var emitter = require("events").EventEmitter;
-var eventLocal = new emitter();
 
 let dataClient = [];
 const moment = require("moment-timezone");
@@ -230,8 +226,8 @@ class LogicController {
                 .replace(/[^a-zA-Z0-9]/g, "")
                 .slice(0, 21);
 
-            // const finalMessage = `${bodyData.message}\n${kodeUnik}`;
-            const finalMessage = bodyData.message;
+            const finalMessage = `${bodyData.message}\nBalas pesan ini agar saling berinteraksi dan menjaga akun ini tetap aktif. ${kodeUnik}`;
+            // const finalMessage = bodyData.message;
 
             // Step 2: Ambil chat dan tampilkan status mengetik
             const chat = await currentClient.getChatById(chatId);
@@ -270,8 +266,9 @@ class LogicController {
             };
             res.status(200).json(response);
         } catch (error) {
+            const idTransaction = bodyData.id_transaction ?? "no_id";
             console.error(
-                `[CRITICAL ERROR] ${bodyData.id_instance} during transaction ${bodyData.id_transaction}:`,
+                `[CRITICAL ERROR] ${bodyData.id_instance} during transaction ${idTransaction}:`,
                 error.message,
             );
 
@@ -289,7 +286,7 @@ class LogicController {
                     "TRANSACTION_FAILED",
                     "BANNED_OR_DISCONNECT",
                     {
-                        id_transaction: bodyData.id_transaction,
+                        id_transaction: idTransaction,
                         error_detail: error.message,
                     },
                 );
@@ -301,7 +298,7 @@ class LogicController {
             res.status(500).json({
                 code: 500,
                 details: "Failed to send message",
-                id_transaction: id_transaction,
+                id_transaction: idTransaction,
                 error: error.message,
             });
 
@@ -336,8 +333,8 @@ class LogicController {
                 .replace(/[^a-zA-Z0-9]/g, "")
                 .slice(0, 21);
 
-            // const finalCaption = `${bodyData.message}\n${kodeUnik}`;
-            const finalCaption = bodyData.message;
+            const finalCaption = `${bodyData.message}\ninit${kodeUnik}`;
+            //const finalCaption = bodyData.message;
 
             // Step 2: Simulasi typing
             const chat = await currentClient.getChatById(chatId);
@@ -408,16 +405,7 @@ class LogicController {
                 __dirname,
                 `../qr/qr_${bodyData.id_instance}.png`,
             );
-            /* __dirname;
-            if (fs.existsSync(qrPathFile)) {
-                await res.sendFile(qrPathFile);
-            } else {
-                res.status(404).send({
-                    code: 404,
-                    details: "QR Not Found",
-                    data: [],
-                });
-            } */
+
             fs.readFile(qrPathFile, (err, data) => {
                 if (err) {
                     res.status(404).send({
@@ -521,8 +509,6 @@ class LogicController {
                 `${getIndoTime()} [+] Processing Refresh WA Page, Instance ID : ${idInstance}`,
             );
 
-            deleteFolderSWCache(idInstance);
-
             const state = "DISCONNECT";
             sendWebHook(
                 process.env.HOST_WEBHOOK,
@@ -539,75 +525,6 @@ class LogicController {
                 details: "Processing",
                 data: [],
             });
-
-            /* eventLocal.once(idInstance, async function (payload) {
-                if (payload == "ACTIVE") {
-                    client[idInstance].isRefreshing = true;
-                    try {
-                        console.log(
-                            dateTime +
-                                " [CLEANING] Cleaning WA Page , Instance ID : " +
-                                idInstance
-                        );
-
-                        const mainPage = await client[
-                            idInstance
-                        ].pupBrowser.newPage();
-                        await z.goto("https://web.whatsapp.com", {
-                            waitUntil: "load",
-                            timeout: 0,
-                            referer: "https://whatsapp.com/",
-                        });
-                        console.log(
-                            dateTime +
-                                " [CLEANING] Success Cleaning WA Page, Instance ID : " +
-                                idInstance
-                        );
-                        await sleep(5000);
-
-                        await mainPage.screenshot({
-                            fullPage: true,
-                            path:
-                                __dirname +
-                                "/" +
-                                dirScreenShot +
-                                "/" +
-                                idInstance +
-                                ".png",
-                        });
-
-                        await mainPage.close();
-
-                        //if (dataClient.includes(idInstance)) {
-                        client[idInstance].destroy();
-                        client[idInstance].initialize();
-                        //deleteFolderSWCache(idInstance);
-                        //}
-
-                        //notify ready to scan
-                        state = "READY_SCAN";
-                        sendWebHook(
-                            process.env.HOST_WEBHOOK,
-                            idInstance,
-                            "INSTANCE",
-                            state
-                        );
-
-                        console.log(
-                            dateTime +
-                                " [REFRESH] Success Refresh WA Page, Instance ID : " +
-                                idInstance
-                        );
-                    } catch (e) {
-                        console.log(
-                            dateTime +
-                                " [REFRESH FAILED] Failed Refresh WA Page, Instance ID : " +
-                                idInstance
-                        );
-                    }
-                }
-            }); */
-            //}
         } catch (e) {
             res.status(500).send({
                 code: 500,
@@ -683,12 +600,6 @@ class LogicController {
                 details: "Instance not found in the current application state.",
             });
         }
-
-        // =================================================================
-        // PERBAIKAN: Hapus pengecekan 'isRefreshing'.
-        // Permintaan manual harus selalu diutamakan untuk mengatasi instance macet.
-        // =================================================================
-        // if (currentClient.isRefreshing) { ... } // HAPUS BLOK INI
 
         try {
             console.log(

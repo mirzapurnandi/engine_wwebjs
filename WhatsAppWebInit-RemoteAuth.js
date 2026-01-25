@@ -1,9 +1,13 @@
 const fs = require("fs").promises;
+const { rm } = require("fs"); // untuk callback-based
 require("dotenv").config({ quiet: true });
-const { Client, LocalAuth } = require("whatsapp-web.js");
+const { Client, MessageMedia, RemoteAuth } = require("whatsapp-web.js");
 const qrPlugin = require("qrcode");
 const moment = require("moment-timezone");
 const axios = require("axios");
+const { MongoStore } = require("wwebjs-mongo");
+require("./config/configMongoose.db");
+const mongoose = require("mongoose");
 const PQueue = require("p-queue").default;
 
 const emitter = require("events").EventEmitter;
@@ -47,19 +51,8 @@ const QR_TIMEOUT_MS = 50 * 60 * 1000; // 50 menit
 
 // === Initialize / create instance ===
 const initialize = async (uuid, isOpen = false) => {
-    /* await mongoose.connect(MONGODB_URI, { autoIndex: true });
+    await mongoose.connect(MONGODB_URI, { autoIndex: true });
     const store = new MongoStore({ mongoose });
-    const authRemote = new RemoteAuth({
-        clientId: uuid,
-        store,
-        backupSyncIntervalMs: 1000 * 60 * 60 * 6,
-        dataPath: "./.wwebjs_auth", // Pastikan path lokal jelas
-    }); */
-    const authLocal = new LocalAuth({
-        clientId: uuid,
-        dataPath: "./.wwebjs_auth_local", // Folder sesi
-    });
-
     client[uuid] = new Client({
         puppeteer: {
             headless: "new",
@@ -91,7 +84,17 @@ const initialize = async (uuid, isOpen = false) => {
                 "--window-size=1280,800", */ // Memaksa ukuran window agar render konsisten
             ],
         },
-        authStrategy: authLocal,
+        // temp
+        webVersionCache: {
+            type: "remote",
+            remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/refs/heads/main/html/2.3000.1031490220-alpha.html`,
+        },
+        authStrategy: new RemoteAuth({
+            clientId: uuid,
+            store,
+            backupSyncIntervalMs: 1000 * 60 * 60 * 6,
+            dataPath: "./.wwebjs_auth", // Pastikan path lokal jelas
+        }),
     });
 
     client[uuid].needsQr = false; // default
@@ -246,6 +249,12 @@ const initialize = async (uuid, isOpen = false) => {
                     );
                 delete client[uuid]; // Hapus dari objek global
             }
+
+            // Hapus cache service worker saja, jangan seluruh sesi kecuali auth gagal
+            deleteFolderSWCache(uuid);
+
+            // Pertimbangkan untuk tidak otomatis restart di sini, biarkan healthCheck yang menanganinya
+            // agar tidak terjadi restart beruntun jika ada masalah jaringan.
         });
 
         if (isOpen) {
@@ -267,6 +276,10 @@ const initialize = async (uuid, isOpen = false) => {
 async function scheduleInitialize(uuid) {
     restartQueue.add(async () => {
         console.log(`[QUEUE] Booting instance ${uuid}...`);
+        // =================================================================
+        // PERBAIKAN UTAMA: Bungkus initialize dalam try...catch
+        // Ini akan mencegah seluruh aplikasi crash jika satu instance gagal.
+        // =================================================================
         try {
             await initialize(uuid, true); // `true` untuk langsung initialize
             console.log(
@@ -285,8 +298,59 @@ async function scheduleInitialize(uuid) {
     });
 }
 
+/* async function _scheduleRestart(uuid) {
+    const currentClient = client[uuid];
+    if (!currentClient) {
+        console.log(`[QUEUE] Restart for ${uuid} skipped (client not found).`);
+        return;
+    }
+
+    // PENTING: Set isRefreshing di objek yang sama yang akan kita gunakan
+    currentClient.isRefreshing = true;
+    sendWebHook(webHookURL, uuid, "INSTANCE", "RESTARTING");
+
+    restartQueue.add(async () => {
+        console.log(`[QUEUE] Starting restart process for instance ${uuid}...`);
+        try {
+            if (currentClient && typeof currentClient.destroy === "function") {
+                await currentClient.destroy().catch((e) => {
+                    console.error(
+                        `[QUEUE] Error during destroy for ${uuid}:`,
+                        e.message
+                    );
+                });
+                console.log(`[QUEUE] Client destroyed: ${uuid}`);
+            }
+            await initialize(uuid, true);
+            console.log(`[QUEUE] Client re-initialization queued: ${uuid}`);
+        } catch (err) {
+            console.error(
+                `[QUEUE] FATAL restart failed for ${uuid}:`,
+                err.message
+            );
+        } finally {
+            // Blok ini akan SELALU berjalan, baik sukses maupun gagal.
+            console.log(
+                `[QUEUE] Finished restart attempt for ${uuid}. Resetting refresh flag.`
+            );
+            if (client[uuid]) {
+                // Cek lagi karena instance bisa saja gagal dibuat ulang
+                client[uuid].isRefreshing = false;
+            }
+        }
+    });
+} */
+
 async function _scheduleRestart(uuid) {
     const currentClient = client[uuid];
+
+    // --- BAGIAN YANG DIPERBAIKI (Mulai) ---
+    // KITA HAPUS BLOCKER INI:
+    // if (!currentClient) { return; }
+
+    // Logika Baru:
+    // Kalau client ada, tandai sedang refreshing.
+    // Kalau tidak ada (null), biarkan lanjut ke bawah supaya dibuatkan baru.
     if (currentClient) {
         currentClient.isRefreshing = true;
         sendWebHook(webHookURL, uuid, "INSTANCE", "RESTARTING");
@@ -295,6 +359,7 @@ async function _scheduleRestart(uuid) {
             `[QUEUE] Instance ${uuid} not found/dead. Forcing re-initialization...`,
         );
     }
+    // --- BAGIAN YANG DIPERBAIKI (Selesai) ---
 
     restartQueue.add(async () => {
         console.log(`[QUEUE] Starting restart process for instance ${uuid}...`);
@@ -385,28 +450,49 @@ function notifyDisconnect(uuid) {
     sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT");
 }
 
-async function deleteFile(filePath) {
-    try {
-        if (!filePath) return;
-        await fs.unlink(filePath);
-    } catch (error) {
-        if (error.code === "ENOENT") return;
-        console.error(`[!] Gagal menghapus file ${filePath}:`, error.message);
-    }
+function deleteFile(path) {
+    fs.unlink(path, () => {});
 }
 
 async function deleteFolderSession(uuid) {
     try {
         // Gunakan versi promise agar tidak blocking
-        await fs.rm(`${__dirname}/.wwebjs_auth_local/session-${uuid}`, {
+        await fs.rm(`${__dirname}/.wwebjs_auth/RemoteAuth-${uuid}`, {
             recursive: true,
             force: true,
         });
+
+        const chunks = mongoose.connection.collection(
+            `whatsapp-RemoteAuth-${uuid}.chunks`,
+        );
+        const files = mongoose.connection.collection(
+            `whatsapp-RemoteAuth-${uuid}.files`,
+        );
+
+        // Gunakan Promise.all untuk menjalankan penghapusan di DB secara paralel
+        await Promise.all([
+            chunks.drop().catch(() => {}),
+            files.drop().catch(() => {}),
+        ]);
 
         console.log(`[+] Session data deleted for ${uuid}`);
     } catch (e) {
         console.log("[!] Error deleteFolderSession:", uuid, e.message);
     }
+}
+
+function deleteFolderSWCache(uuid) {
+    // Gunakan callback-based rm yang non-blocking
+    const path = `${__dirname}/.wwebjs_auth/RemoteAuth-${uuid}/Default/Service Worker/ScriptCache`;
+    rm(path, { recursive: true, force: true }, (err) => {
+        if (err && err.code !== "ENOENT") {
+            // Jangan log error jika folder tidak ada
+            console.error(
+                `[!] Failed to delete SW Cache for ${uuid}:`,
+                err.message,
+            );
+        }
+    });
 }
 
 async function sendWebHook(url, uuid, type, state = null, data = {}) {
@@ -426,6 +512,7 @@ module.exports = {
     _scheduleRestart,
     healthCheck,
     deleteFolderSession,
+    deleteFolderSWCache,
     deleteFile,
     notifyDisconnect,
     sendWebHook,

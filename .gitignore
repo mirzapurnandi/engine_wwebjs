@@ -1,5 +1,6 @@
 node_modules/
 package-lock.json
+.wwebjs_auth_local/
 .wwebjs_auth/
 .wwebjs_cache/
 qr/
