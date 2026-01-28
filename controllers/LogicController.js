@@ -679,38 +679,74 @@ class LogicController {
         }
 
         console.log(
-            `${getIndoTime()} [API] Received FORCE restart request for instance: ${id_instance}`,
+            `${getIndoTime()} [FORCE-RESET] Permintaan restart keras untuk: ${id_instance}`,
         );
 
-        const currentClient = client[id_instance];
-
-        if (!currentClient) {
-            return res.status(404).json({
-                code: 404,
-                details: "Instance not found in the current application state.",
-            });
-        }
-
         try {
-            console.log(
-                `[API] Forcefully queuing restart for stuck instance ${id_instance}.`,
-            );
-            await _scheduleRestart(id_instance);
+            const currentClient = client[id_instance];
 
-            res.status(202).json({
-                code: 202,
+            // Step 1: Bersihkan instance lama jika ada di memori
+            if (currentClient) {
+                console.log(
+                    `[FORCE-RESET] Mencoba mematikan proses browser ${id_instance}...`,
+                );
+                try {
+                    // Jangan tunggu selamanya, jika 10 detik tidak mati, anggap saja hang
+                    await Promise.race([
+                        currentClient.destroy(),
+                        new Promise((_, reject) =>
+                            setTimeout(
+                                () => reject(new Error("Browser Hang/Timeout")),
+                                10000,
+                            ),
+                        ),
+                    ]);
+                } catch (e) {
+                    console.error(
+                        `[FORCE-RESET] Gagal destroy halus untuk ${id_instance}: ${e.message}`,
+                    );
+                }
+
+                // Hapus referensi agar Garbage Collector membersihkan RAM
+                delete client[id_instance];
+            }
+
+            // Step 2: Hapus file QR lama agar tidak membingungkan
+            const qrPath = path.join(__dirname, `../qr/qr_${id_instance}.png`);
+            if (fs.existsSync(qrPath)) {
+                fs.unlinkSync(qrPath);
+            }
+
+            // Step 3: Trigger inisialisasi ulang (Non-Blocking)
+            initialize(id_instance, true).catch((err) => {
+                console.error(
+                    `[FORCE-RESET] Gagal inisialisasi ulang async untuk ${id_instance}:`,
+                    err.message,
+                );
+            });
+
+            sendWebHook(
+                process.env.HOST_WEBHOOK,
+                id_instance,
+                "INSTANCE",
+                "RESTARTING",
+            );
+
+            res.status(200).json({
+                code: 200,
                 details:
-                    "Accepted: The instance restart process has been forcefully queued.",
-                data: { id_instance },
+                    "Accepted: Instance sedang di-restart keras di background.",
+                data: {
+                    id_instance,
+                    status: "RESTARTING_CLEAN",
+                },
             });
         } catch (error) {
-            console.error(
-                `[API-RESTART] Error queuing force-restart for ${id_instance}:`,
-                error,
-            );
+            console.error(`[FORCE-RESET] Error kritis:`, error);
             res.status(500).json({
                 code: 500,
-                details: "Internal Server Error",
+                details: "Gagal melakukan force restart.",
+                error: error.message,
             });
         }
     };

@@ -31,7 +31,11 @@ router.post(
     checkHeader,
     logicController.instanceRedeploy,
 );
-router.post("/instance-refresh", checkHeader, logicController.instanceRefresh);
+router.post(
+    "/instance-refresh",
+    checkHeader,
+    logicController.forceInstanceRestart,
+);
 router.post("/status", checkHeader, logicController.getStatus);
 
 router.post(

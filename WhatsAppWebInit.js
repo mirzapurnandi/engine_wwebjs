@@ -61,7 +61,7 @@ const initialize = async (uuid, isOpen = false) => {
 
     client[uuid] = new Client({
         puppeteer: {
-            headless: "new",
+            headless: false, //"new",
             executablePath:
                 process.env.CHROME_EXECUTABLE_PATH ||
                 "/usr/bin/google-chrome-stable",
@@ -127,6 +127,7 @@ const initialize = async (uuid, isOpen = false) => {
                 "INSTANCE",
                 "SUCCESS_CREATE_INSTANCE",
             );
+            resolve(uuid);
             // eventLocal.emit(uuid, "ACTIVE");
         });
 
