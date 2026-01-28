@@ -127,7 +127,6 @@ const initialize = async (uuid, isOpen = false) => {
                 "INSTANCE",
                 "SUCCESS_CREATE_INSTANCE",
             );
-            resolve(uuid);
             // eventLocal.emit(uuid, "ACTIVE");
         });
 
