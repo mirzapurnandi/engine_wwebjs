@@ -15,7 +15,6 @@ const db = require("./config/configSqlite.db");
 // const connectMongoose = require("./config/configMongoose.db");
 const {
     client,
-    initialize,
     scheduleInitialize,
     healthCheck,
 } = require("./WhatsAppWebInit");
@@ -30,77 +29,69 @@ app.use(routes);
 
 let server;
 
-// index.js
-
 const startApp = async () => {
     try {
-        // 1. Inisialisasi Database (Tetap di awal agar tabel siap)
-        await new Promise((resolve, reject) => {
-            db.serialize(() => {
-                const CREATE_TABLE_SESSION = `CREATE TABLE IF NOT EXISTS sessions (id_instance TEXT PRIMARY KEY)`;
-                db.run(CREATE_TABLE_SESSION, (err) =>
-                    err ? reject(err) : resolve(),
-                );
-            });
-        });
-        console.log("✅ Database Table 'sessions' is ready.");
+        // await connectMongoose();
 
-        // 2. JALANKAN EXPRESS SERVER TERLEBIH DAHULU
-        // Ini memastikan API bisa diakses meskipun WA masih loading
-        const serverHost = process.env.SERVER || "http://localhost";
-        server = app.listen(PORT, () => {
-            console.log(`🚀 Server is running on ${serverHost}:${PORT} ✅`);
-            console.log(
-                `[SYSTEM] API is now accessible while instances are booting...`,
-            );
-        });
-
-        // 3. Ambil semua session dari DB
-        const rows = await new Promise((resolve, reject) => {
-            db.all("SELECT * FROM sessions", (err, rows) =>
-                err ? reject(err) : resolve(rows),
-            );
-        });
-
-        // 4. PROSES INITIALIZE DI BACKGROUND (NON-BLOCKING)
-        // Kita tidak menggunakan 'await' pada loop utama agar tidak mengunci proses
-        if (rows.length > 0) {
-            console.log(
-                `[STARTUP] Found ${rows.length} sessions. Booting in background...`,
-            );
-
-            // Gunakan fungsi async IIFE agar loop berjalan secara independen
-            (async () => {
-                for (const row of rows) {
-                    const uuid = row.id_instance;
-                    console.log(
-                        `[ASYNC-BOOT] Triggering initialize for: ${uuid}`,
+        // =================================================================
+        // PERBAIKAN UTAMA: Gunakan db.serialize untuk mencegah race condition
+        // =================================================================
+        db.serialize(() => {
+            const CREATE_TABLE_SESSION = `CREATE TABLE IF NOT EXISTS sessions (id_instance TEXT PRIMARY KEY)`;
+            db.run(CREATE_TABLE_SESSION, (error) => {
+                if (error) {
+                    console.error(
+                        "Fatal: Error creating sessions table:",
+                        error,
                     );
+                    process.exit(1);
+                }
+                console.log("Table 'sessions' is ready.");
 
-                    try {
-                        // Kita tetap beri jeda antar akun agar CPU tidak meledak,
-                        // tapi ini tidak menghalangi Express yang sudah nyala di atas.
-                        await initialize(uuid, true);
-                        await new Promise((res) => setTimeout(res, 5000));
-                    } catch (err) {
-                        console.error(
-                            `[ASYNC-BOOT] Error on ${uuid}: ${err.message}`,
+                // Jalankan SELECT HANYA SETELAH CREATE selesai
+                const SELECT_ALL_SESSION = "SELECT * FROM sessions";
+                db.all(SELECT_ALL_SESSION, (error, rows) => {
+                    if (error) {
+                        console.error("Error loading sessions from DB:", error);
+                        return;
+                    }
+                    if (rows.length > 0) {
+                        console.log(
+                            `[+] Found ${rows.length} sessions to initialize...`,
+                        );
+                        for (const row of rows) {
+                            scheduleInitialize(row.id_instance);
+                        }
+                    } else {
+                        console.warn(
+                            "Table sessions is empty. No instances to initialize.",
                         );
                     }
-                }
-                console.log("[ASYNC-BOOT] All instances have been triggered.");
-            })();
-        }
+                });
+            });
+        });
+        // =================================================================
+        // AKHIR PERBAIKAN
+        // =================================================================
 
-        // 5. Health Check Interval
         setInterval(() => {
             const activeClients = Object.keys(client);
             if (activeClients.length > 0) {
                 activeClients.forEach((id) => healthCheck(id));
             }
         }, 120 * 1000);
+
+        const serverHost = process.env.SERVER || "http://localhost";
+        server = app
+            .listen(PORT, () => {
+                console.log(`Server is running on ${serverHost}:${PORT} ✅`);
+            })
+            .on("error", (err) => {
+                console.error("Server error:", err);
+                process.exit(1);
+            });
     } catch (error) {
-        console.error("❌ Failed to start the application:", error);
+        console.error("Failed to start the application:", error);
         process.exit(1);
     }
 };
