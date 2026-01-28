@@ -61,7 +61,7 @@ const initialize = async (uuid, isOpen = false) => {
 
     client[uuid] = new Client({
         puppeteer: {
-            headless: false, //"new",
+            headless: "new",
             executablePath:
                 process.env.CHROME_EXECUTABLE_PATH ||
                 "/usr/bin/google-chrome-stable",
