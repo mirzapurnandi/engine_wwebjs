@@ -266,6 +266,7 @@ class LogicController {
 
     sendMessageWithTyping = async (req, res) => {
         const bodyData = req.body;
+        const idTransaction = bodyData.id_transaction || null;
 
         try {
             const chatId = `${bodyData.destination}@c.us`;
@@ -277,7 +278,7 @@ class LogicController {
                 return res.status(404).json({
                     code: 404,
                     details: "Instance not found",
-                    data: [],
+                    data: { id_transaction: idTransaction },
                 });
             }
 
@@ -291,7 +292,10 @@ class LogicController {
                 return res.status(check.code).json({
                     code: check.code,
                     details: check.details,
-                    data: { destination: bodyData.destination },
+                    data: {
+                        destination: bodyData.destination,
+                        id_transaction: idTransaction,
+                    },
                 });
             }
 
@@ -343,12 +347,12 @@ class LogicController {
                     destination: bodyData.destination,
                     destination_in_wa: chatId,
                     id_message: respMsg.id.id,
+                    id_transaction: idTransaction,
                     delay: randomDelay,
                 },
             };
             res.status(200).json(response);
         } catch (error) {
-            const idTransaction = bodyData.id_transaction ?? "no_id";
             console.error(
                 `[CRITICAL ERROR] ${bodyData.id_instance} during transaction ${idTransaction}:`,
                 error.message,
@@ -358,7 +362,9 @@ class LogicController {
             const isDisconnected =
                 error.message.includes("Session closed") ||
                 error.message.includes("not opened") ||
-                error.message.includes("Protocol error");
+                error.message.includes("Protocol error") ||
+                error.message.includes("properties of undefined") ||
+                error.message.includes("Page crashed");
 
             if (isDisconnected) {
                 // Beritahu Server Utama bahwa TRANSAKSI INI GAGAL karena akun bermasalah
@@ -388,6 +394,7 @@ class LogicController {
 
     sendMediaWithTyping = async (req, res) => {
         const bodyData = req.body;
+        const idTransaction = bodyData.id_transaction || null;
 
         try {
             const chatId = `${bodyData.destination}@c.us`;
@@ -398,7 +405,9 @@ class LogicController {
                 return res.status(404).json({
                     code: 404,
                     details: "Instance not found",
-                    data: [],
+                    data: {
+                        id_transaction: idTransaction,
+                    },
                 });
             }
 
@@ -412,7 +421,10 @@ class LogicController {
                 return res.status(check.code).json({
                     code: check.code,
                     details: check.details,
-                    data: { destination: bodyData.destination },
+                    data: {
+                        destination: bodyData.destination,
+                        id_transaction: idTransaction,
+                    },
                 });
             }
 
@@ -443,10 +455,17 @@ class LogicController {
 
             // Step 3: Ambil media dari URL (setelah delay)
             const fileName = `wasend id ${kodeUnik}`;
-            const messageMedia = await MessageMedia.fromUrl(bodyData.file_url, {
-                unsafeMime: true,
-                timeout: 20000,
-            });
+            let messageMedia;
+            try {
+                messageMedia = await MessageMedia.fromUrl(bodyData.file_url, {
+                    unsafeMime: true,
+                    reqOptions: { timeout: 20000 },
+                });
+            } catch (error) {
+                throw new Error(
+                    "Failed to download media: " + mediaErr.message,
+                );
+            }
 
             const contentMSG = new MessageMedia(
                 messageMedia.mimetype,
@@ -475,15 +494,19 @@ class LogicController {
                     destination: bodyData.destination,
                     destination_in_wa: chatId,
                     id_message: respMsg.id.id,
+                    id_transaction: idTransaction,
                     delay: randomDelay,
                 },
             });
         } catch (error) {
-            console.log(error);
+            console.error(
+                `[MEDIA ERROR] TransID ${idTransaction}:`,
+                error.message,
+            );
             return res.status(500).json({
                 code: 500,
                 details: "Failed to send media",
-                data: error,
+                data: { error: error.message },
             });
         }
     };

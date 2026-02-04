@@ -1,3 +1,4 @@
+const path = require("path");
 const fs = require("fs").promises;
 require("dotenv").config({ quiet: true });
 const { Client, LocalAuth } = require("whatsapp-web.js");
@@ -46,14 +47,21 @@ const QR_TIMEOUT_MS = 50 * 60 * 1000; // 50 menit
 
 // === Initialize / create instance ===
 const initialize = async (uuid, isOpen = false) => {
-    /* await mongoose.connect(MONGODB_URI, { autoIndex: true });
-    const store = new MongoStore({ mongoose });
-    const authRemote = new RemoteAuth({
-        clientId: uuid,
-        store,
-        backupSyncIntervalMs: 1000 * 60 * 60 * 6,
-        dataPath: "./.wwebjs_auth", // Pastikan path lokal jelas
-    }); */
+    const sessionPath = path.join(
+        __dirname,
+        ".wwebjs_auth_local",
+        `session-${uuid}`,
+    );
+    const lockPath = path.join(sessionPath, "SingletonLock");
+
+    try {
+        // Hapus file lock jika ada agar Puppeteer tidak menganggap browser sedang jalan
+        await fs.unlink(lockPath).catch(() => {});
+        console.log(`[CLEANUP] Lock file cleared for ${uuid}`);
+    } catch (e) {
+        // Abaikan jika folder belum ada
+    }
+
     const authLocal = new LocalAuth({
         clientId: uuid,
         dataPath: "./.wwebjs_auth_local", // Folder sesi
@@ -231,7 +239,9 @@ const initialize = async (uuid, isOpen = false) => {
 
         client[uuid].on("disconnected", async (reason) => {
             console.log(getIndoTime(), "[!] Disconnected:", uuid, reason);
-            sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT");
+            sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT", {
+                reason: reason,
+            });
 
             // Hancurkan client terlebih dahulu
             if (client[uuid]) {
