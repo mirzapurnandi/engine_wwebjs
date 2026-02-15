@@ -104,7 +104,9 @@ class LogicController {
         }
 
         try {
-            const chatId = `${destination}@c.us`;
+            const chatId = destination.includes("@")
+                ? destination
+                : `${destination}@c.us`;
 
             // --- PANGGIL FUNGSI CHECKING ---
             const check = await this.checkingDestination(
@@ -133,6 +135,8 @@ class LogicController {
             };
             res.status(200).json(response);
         } catch (error) {
+            console.log(error);
+
             console.error(
                 `[sendMessage] Error for ${id_instance}:`,
                 error.message,
@@ -152,6 +156,9 @@ class LogicController {
 
         try {
             const messageMedia = await MessageMedia.fromUrl(bodyData.file_url);
+            const chatId = bodyData.destination.includes("@")
+                ? bodyData.destination
+                : `${bodyData.destination}@c.us`;
 
             let contentMSG = new MessageMedia(
                 messageMedia.mimetype,
@@ -160,7 +167,7 @@ class LogicController {
             );
 
             const respMsg = await client[bodyData.id_instance].sendMessage(
-                `${bodyData.destination}@c.us`,
+                chatId,
                 contentMSG,
                 { caption: bodyData.caption },
             );
@@ -171,7 +178,7 @@ class LogicController {
                 data: {
                     id_instance: bodyData.id_instance,
                     destination: bodyData.destination,
-                    destination_in_wa: `${bodyData.destination}@c.us`,
+                    destination_in_wa: chatId,
                     id_message: respMsg.id.id,
                 },
             };
@@ -219,9 +226,20 @@ class LogicController {
     };
 
     checkingDestination = async (currentClient, chatId, destination) => {
+        if (chatId.endsWith("@lid")) {
+            return {
+                status: true,
+                code: 200,
+                details: "LID target detected, bypassing registration check.",
+            };
+        }
+
         // 1. Cek apakah nomor terdaftar di WhatsApp
         const isRegistered = await currentClient.isRegisteredUser(chatId);
         if (!isRegistered) {
+            console.log(
+                `[Validation] Danger: Number ${destination} is not registered.`,
+            );
             return {
                 status: false,
                 code: 400,
@@ -269,7 +287,10 @@ class LogicController {
         const idTransaction = bodyData.id_transaction || null;
 
         try {
-            const chatId = `${bodyData.destination}@c.us`;
+            // const chatId = `${bodyData.destination}@c.us`;
+            const chatId = bodyData.destination.includes("@")
+                ? bodyData.destination
+                : `${bodyData.destination}@c.us`;
             const instanceId = bodyData.id_instance;
 
             // Step 1: Pastikan instance aktif
@@ -300,20 +321,17 @@ class LogicController {
             }
 
             const spintaxFooter =
-                "{Balas|Respon|Tolong balas} pesan ini {agar|supaya} {saling berinteraksi|akun tetap aktif|terjalin komunikasi} dan {menjaga|memastikan} akun ini {tetap aktif|tidak terblokir|aman}. {kode|unik|rand|log}:";
+                "{Balas|Respon|Tolong balas} pesan ini {agar|supaya} {saling berinteraksi|akun tetap aktif|terjalin komunikasi} dan {menjaga|memastikan} akun ini {tetap aktif|tidak terblokir|aman}. {code|uniq|rand|log}:";
 
-            // Memproses spintax agar kalimat footer acak
             const randomFooter = this.processSpintax(spintaxFooter);
 
             const kodeUnik = crypto
-                .randomBytes(6)
+                .randomBytes(16) // Naikkan sedikit bytes-nya agar slice 21 selalu terpenuhi
                 .toString("base64")
                 .replace(/[^a-zA-Z0-9]/g, "")
                 .slice(0, 21);
 
             const finalMessage = `${bodyData.message}\n\n${randomFooter}${kodeUnik}`;
-            //const finalMessage = `${bodyData.message}\n\nBalas pesan ini agar saling berinteraksi dan menjaga akun ini tetap aktif. ${kodeUnik}`;
-            // const finalMessage = bodyData.message;
 
             // Step 2: Ambil chat dan tampilkan status mengetik
             const chat = await currentClient.getChatById(chatId);
@@ -395,11 +413,12 @@ class LogicController {
     sendMediaWithTyping = async (req, res) => {
         const bodyData = req.body;
         const idTransaction = bodyData.id_transaction || null;
+        const chatId = bodyData.destination.includes("@")
+            ? bodyData.destination
+            : `${bodyData.destination}@c.us`;
+        const instanceId = bodyData.id_instance;
 
         try {
-            const chatId = `${bodyData.destination}@c.us`;
-            const instanceId = bodyData.id_instance;
-
             const currentClient = client[instanceId];
             if (!currentClient) {
                 return res.status(404).json({
@@ -428,15 +447,18 @@ class LogicController {
                 });
             }
 
-            // Step 1: Generate kode unik
+            const spintaxFooter =
+                "{Balas|Respon|Tolong balas} pesan ini {agar|supaya} {saling berinteraksi|akun tetap aktif|terjalin komunikasi} dan {menjaga|memastikan} akun ini {tetap aktif|tidak terblokir|aman}. {code|uniq|rand|log}:";
+
+            const randomFooter = this.processSpintax(spintaxFooter);
+
             const kodeUnik = crypto
-                .randomBytes(6)
+                .randomBytes(16) // Naikkan sedikit bytes-nya agar slice 21 selalu terpenuhi
                 .toString("base64")
                 .replace(/[^a-zA-Z0-9]/g, "")
                 .slice(0, 21);
 
-            const finalCaption = `${bodyData.message}\ninit${kodeUnik}`;
-            //const finalCaption = bodyData.message;
+            const finalCaption = `${bodyData.message}\n\n${randomFooter}${kodeUnik}`;
 
             // Step 2: Simulasi typing
             const chat = await currentClient.getChatById(chatId);
@@ -454,7 +476,7 @@ class LogicController {
             await new Promise((resolve) => setTimeout(resolve, randomDelay));
 
             // Step 3: Ambil media dari URL (setelah delay)
-            const fileName = `wasend id ${kodeUnik}`;
+            const fileName = `wasend_id ${kodeUnik}`;
             let messageMedia;
             try {
                 messageMedia = await MessageMedia.fromUrl(bodyData.file_url, {
@@ -503,10 +525,39 @@ class LogicController {
                 `[MEDIA ERROR] TransID ${idTransaction}:`,
                 error.message,
             );
+
+            // Identifikasi apakah error disebabkan oleh koneksi mati/banned
+            const isDisconnected =
+                error.message.includes("Session closed") ||
+                error.message.includes("not opened") ||
+                error.message.includes("Protocol error") ||
+                error.message.includes("properties of undefined") ||
+                error.message.includes("Page crashed");
+
+            if (isDisconnected) {
+                // Beritahu Server Utama bahwa TRANSAKSI INI GAGAL karena akun bermasalah
+                sendWebHook(
+                    process.env.HOST_WEBHOOK,
+                    bodyData.id_instance,
+                    "TRANSACTION_FAILED",
+                    "BANNED_OR_DISCONNECT",
+                    {
+                        id_transaction: idTransaction,
+                        error_detail: error.message,
+                    },
+                );
+
+                // Trigger pembersihan instance karena sudah tidak berguna
+                deleteFolderSession(bodyData.id_instance);
+            }
+
             return res.status(500).json({
                 code: 500,
                 details: "Failed to send media",
-                data: { error: error.message },
+                data: {
+                    id_transaction: idTransaction,
+                    error: error.message,
+                },
             });
         }
     };
