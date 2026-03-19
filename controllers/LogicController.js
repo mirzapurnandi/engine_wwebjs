@@ -320,6 +320,21 @@ class LogicController {
                 });
             }
 
+            if (bodyData.delay == "BYPASS") {
+                return res.status(200).json({
+                    code: 200,
+                    details: "successfully checking data",
+                    data: {
+                        id_instance: instanceId,
+                        destination: bodyData.destination,
+                        destination_in_wa: chatId,
+                        id_message: null,
+                        id_transaction: idTransaction,
+                        delay: null,
+                    },
+                });
+            }
+
             const spintaxFooter =
                 "{Balas|Respon|Tolong balas} pesan ini {agar|supaya} {saling berinteraksi|akun tetap aktif|terjalin komunikasi} dan {menjaga|memastikan} akun ini {tetap aktif|tidak terblokir|aman}. {code|uniq|rand|log}:";
 
@@ -443,6 +458,21 @@ class LogicController {
                     data: {
                         destination: bodyData.destination,
                         id_transaction: idTransaction,
+                    },
+                });
+            }
+
+            if (bodyData.delay == "BYPASS") {
+                return res.status(200).json({
+                    code: 200,
+                    details: "successfully checking data",
+                    data: {
+                        id_instance: instanceId,
+                        destination: bodyData.destination,
+                        destination_in_wa: chatId,
+                        id_message: null,
+                        id_transaction: idTransaction,
+                        delay: null,
                     },
                 });
             }
