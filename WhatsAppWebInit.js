@@ -198,28 +198,33 @@ const initialize = async (uuid, isOpen = false) => {
             if (msg.hasMedia) {
                 msgType = "media";
             }
-            //console.log(dateTime + " [INBOX] Receive New Message Type : " + msgType);
+
             console.log(
                 `${getIndoTime()} [INBOX] Receive New Message Type : ${msgType} | from : ${await msg.from} | to : ${await msg.to}`,
             );
 
             if (msg.hasMedia) {
-                if (process.env.type == "INTERACTIVE") {
-                    const media = await msg.downloadMedia();
-                    //send webhook
-                    let dataMsg = {
-                        id_msg: await msg.id.id,
-                        type: "media",
-                        from: await msg.from,
-                        content: media,
-                    };
-                    sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
-                }
+                //if (process.env.type == "INTERACTIVE") {
+                const media = await msg.downloadMedia();
+
+                // --- PERUBAHAN DI SINI ---
+                // Tangkap msg.body sebagai caption
+                let captionText = await msg.body;
+
+                let dataMsg = {
+                    id_msg: await msg.id.id,
+                    type: "media",
+                    from: await msg.from,
+                    to: await msg.to, // Tambahkan 'to' agar sejajar dengan format text
+                    caption: captionText, // Kirim caption ke webhook
+                    content: media,
+                };
+
+                // Hilangkan validasi message !== "" karena media bisa dikirim tanpa caption
+                sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
+                //}
             } else {
-                //console.log(msg);
-                //push message
                 let message = await msg.body;
-                //send webhook
                 let dataMsg = {
                     id_msg: await msg.id.id,
                     type: "text",

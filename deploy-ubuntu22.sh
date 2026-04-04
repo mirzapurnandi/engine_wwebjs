@@ -7,7 +7,7 @@ REPO="https://github.com/mirzapurnandi/engine_wwebjs.git"
 APP_DIR="/var/www/engine_wwebjs"
 
 echo "=============================================="
-echo "🚀 DEPLOY STARTED (Ubuntu 24.04)"
+echo "🚀 DEPLOY STARTED (Ubuntu 22.04)"
 echo "=============================================="
 
 # === Update & Dependensi ===
@@ -23,14 +23,15 @@ sudo npm install -g npm@latest pm2
 
 # === Install MongoDB 8 (Fix Key + Ubuntu 24.04) ===
 echo "[3/10] Installing MongoDB 8..."
-
+sudo apt update
+sudo apt install gnupg curl
 # Add GPG Key (new recommended endpoint)
-curl -fsSL https://pgp.mongodb.com/server-8.0.asc | \
-  sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.0.gpg
+curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
+   sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg \
+   --dearmor
 
 # Create apt source list
-echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" \
-  | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/8.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
 
 sudo apt update -y
 sudo apt install -y mongodb-org
@@ -51,6 +52,7 @@ echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl
 
 sudo apt update
 sudo apt install -y google-chrome-stable
+sudo apt install -y fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1
 
 # === Clone Project ===
 echo "[5/10] Cloning repository..."

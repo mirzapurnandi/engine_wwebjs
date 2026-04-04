@@ -335,9 +335,13 @@ class LogicController {
                 });
             }
 
-            const spintaxFooter =
-                "{Balas|Respon|Tolong balas} pesan ini {agar|supaya} {saling berinteraksi|akun tetap aktif|terjalin komunikasi} dan {menjaga|memastikan} akun ini {tetap aktif|tidak terblokir|aman}. {code|uniq|rand|log}:";
-
+            const isWarmup =
+                idTransaction && String(idTransaction).startsWith("WARMUP");
+            let spintaxFooter = "{code|uniq|rand|log}:";
+            if (!isWarmup) {
+                spintaxFooter =
+                    "{Balas|Respon|Tolong balas} pesan ini {agar|supaya} {saling berinteraksi|akun tetap aktif|terjalin komunikasi} dan {menjaga|memastikan} akun ini {tetap aktif|tidak terblokir|aman}. {code|uniq|rand|log}:";
+            }
             const randomFooter = this.processSpintax(spintaxFooter);
 
             const kodeUnik = crypto
@@ -425,7 +429,7 @@ class LogicController {
         }
     };
 
-    sendMediaWithTyping = async (req, res) => {
+    /* sendMediaWithTyping = async (req, res) => {
         const bodyData = req.body;
         const idTransaction = bodyData.id_transaction || null;
         const chatId = bodyData.destination.includes("@")
@@ -579,6 +583,202 @@ class LogicController {
 
                 // Trigger pembersihan instance karena sudah tidak berguna
                 deleteFolderSession(bodyData.id_instance);
+            }
+
+            return res.status(500).json({
+                code: 500,
+                details: "Failed to send media",
+                data: {
+                    id_transaction: idTransaction,
+                    error: error.message,
+                },
+            });
+        }
+    }; */
+
+    sendMediaWithTyping = async (req, res) => {
+        const bodyData = req.body;
+        const idTransaction = bodyData.id_transaction || null;
+        const chatId = bodyData.destination.includes("@")
+            ? bodyData.destination
+            : `${bodyData.destination}@c.us`;
+        const instanceId = bodyData.id_instance;
+
+        try {
+            const currentClient = client[instanceId];
+            if (!currentClient) {
+                return res.status(404).json({
+                    code: 404,
+                    details: "Instance not found",
+                    data: {
+                        id_transaction: idTransaction,
+                    },
+                });
+            }
+
+            // --- PANGGIL FUNGSI CHECKING ---
+            const check = await this.checkingDestination(
+                currentClient,
+                chatId,
+                bodyData.destination,
+            );
+            if (!check.status) {
+                return res.status(check.code).json({
+                    code: check.code,
+                    details: check.details,
+                    data: {
+                        destination: bodyData.destination,
+                        id_transaction: idTransaction,
+                    },
+                });
+            }
+
+            if (bodyData.delay == "BYPASS") {
+                return res.status(200).json({
+                    code: 200,
+                    details: "successfully checking data",
+                    data: {
+                        id_instance: instanceId,
+                        destination: bodyData.destination,
+                        destination_in_wa: chatId,
+                        id_message: null,
+                        id_transaction: idTransaction,
+                        delay: null,
+                    },
+                });
+            }
+
+            // --- MANAJEMEN CAPTION & FOOTER ---
+            let finalCaption = bodyData.message || "";
+            const isWarmup =
+                idTransaction && String(idTransaction).startsWith("WARMUP");
+
+            // Hanya tambahkan Footer unik jika ini BUKAN pesan Warmup
+            if (!isWarmup) {
+                const spintaxFooter =
+                    "{Balas|Respon|Tolong balas} pesan ini {agar|supaya} {saling berinteraksi|akun tetap aktif|terjalin komunikasi} dan {menjaga|memastikan} akun ini {tetap aktif|tidak terblokir|aman}. {code|uniq|rand|log}:";
+
+                const randomFooter = this.processSpintax(spintaxFooter);
+
+                const kodeUnik = crypto
+                    .randomBytes(16)
+                    .toString("base64")
+                    .replace(/[^a-zA-Z0-9]/g, "")
+                    .slice(0, 21);
+
+                finalCaption = `${finalCaption}\n\n${randomFooter} ${kodeUnik}`;
+            }
+
+            // --- SIMULASI TYPING ---
+            const chat = await currentClient.getChatById(chatId);
+            await chat.sendStateTyping();
+
+            const { minDelay, maxDelay, randomDelay } =
+                await this.getHumanDelay(bodyData.message, bodyData.delay);
+
+            console.log("Media Typing simulation: ", {
+                minDelay,
+                maxDelay,
+                randomDelay,
+            });
+
+            await new Promise((resolve) => setTimeout(resolve, randomDelay));
+
+            // --- MANAJEMEN MEDIA (BASE64 vs URL) ---
+            let contentMSG;
+            try {
+                if (bodyData.base64_data) {
+                    // 1. CARA BARU: Menggunakan Base64 (Dari Warmup Server)
+                    const mimetype = bodyData.mimetype || "image/jpeg";
+                    const filename = bodyData.filename || "media_warmup.jpg";
+                    contentMSG = new MessageMedia(
+                        mimetype,
+                        bodyData.base64_data,
+                        filename,
+                    );
+                } else if (bodyData.file_url) {
+                    // 2. CARA LAMA: Menggunakan URL (Dari Blast Server)
+                    const kodeUnikFile = crypto.randomBytes(6).toString("hex");
+                    const fileName = `wasend_id_${kodeUnikFile}`;
+
+                    const messageMedia = await MessageMedia.fromUrl(
+                        bodyData.file_url,
+                        {
+                            unsafeMime: true,
+                            reqOptions: { timeout: 20000 },
+                        },
+                    );
+                    contentMSG = new MessageMedia(
+                        messageMedia.mimetype,
+                        messageMedia.data,
+                        fileName,
+                    );
+                } else {
+                    throw new Error(
+                        "Payload media kosong (base64_data atau file_url tidak ditemukan)",
+                    );
+                }
+            } catch (mediaErr) {
+                throw new Error("Failed to process media: " + mediaErr.message);
+            }
+
+            // --- KIRIM PESAN ---
+            const respMsg = await currentClient.sendMessage(
+                chatId,
+                contentMSG,
+                {
+                    caption: finalCaption,
+                    waitUntilMsgSent: true,
+                },
+            );
+
+            // --- CLEAR TYPING ---
+            await chat.clearState();
+
+            return res.status(200).json({
+                code: 200,
+                details: "Media sent with typing simulation",
+                data: {
+                    id_instance: instanceId,
+                    destination: bodyData.destination,
+                    destination_in_wa: chatId,
+                    id_message: respMsg.id.id,
+                    id_transaction: idTransaction,
+                    delay: randomDelay,
+                },
+            });
+        } catch (error) {
+            console.error(
+                `[MEDIA ERROR] TransID ${idTransaction}:`,
+                error.message,
+            );
+
+            // Identifikasi apakah error disebabkan oleh koneksi mati/banned
+            const isDisconnected =
+                error.message.includes("Session closed") ||
+                error.message.includes("not opened") ||
+                error.message.includes("Protocol error") ||
+                error.message.includes("properties of undefined") ||
+                error.message.includes("Page crashed");
+
+            if (isDisconnected) {
+                // Beritahu Server Utama bahwa TRANSAKSI INI GAGAL karena akun bermasalah
+                sendWebHook(
+                    process.env.HOST_WEBHOOK,
+                    bodyData.id_instance,
+                    "TRANSACTION_FAILED",
+                    "BANNED_OR_DISCONNECT",
+                    {
+                        id_transaction: idTransaction,
+                        error_detail: error.message,
+                    },
+                );
+
+                // Trigger pembersihan instance karena sudah tidak berguna
+                // Pastikan fungsi deleteFolderSession tersedia atau diimport
+                if (typeof deleteFolderSession === "function") {
+                    deleteFolderSession(bodyData.id_instance);
+                }
             }
 
             return res.status(500).json({
