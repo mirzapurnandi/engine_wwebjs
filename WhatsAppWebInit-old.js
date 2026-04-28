@@ -1,15 +1,7 @@
 const path = require("path");
 const fs = require("fs").promises;
 require("dotenv").config({ quiet: true });
-
-// Import whatsapp-web.js (Tanpa LocalAuth karena sesi akan di-handle langsung oleh Puppeteer)
-const { Client } = require("whatsapp-web.js");
-
-// === IMPORT PUPPETEER SILUMAN ===
-const puppeteer = require("puppeteer-extra");
-const StealthPlugin = require("puppeteer-extra-plugin-stealth");
-puppeteer.use(StealthPlugin());
-
+const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrPlugin = require("qrcode");
 const moment = require("moment-timezone");
 const axios = require("axios");
@@ -63,19 +55,24 @@ const initialize = async (uuid, isOpen = false) => {
     const lockPath = path.join(sessionPath, "SingletonLock");
 
     try {
+        // Hapus file lock jika ada agar Puppeteer tidak menganggap browser sedang jalan
         await fs.unlink(lockPath).catch(() => {});
         console.log(`[CLEANUP] Lock file cleared for ${uuid}`);
-    } catch (e) {}
+    } catch (e) {
+        // Abaikan jika folder belum ada
+    }
 
-    let browser;
-    try {
-        // 1. BUKA BROWSER MANUAL MENGGUNAKAN PUPPETEER EXTRA (STEALTH)
-        browser = await puppeteer.launch({
+    const authLocal = new LocalAuth({
+        clientId: uuid,
+        dataPath: "./.wwebjs_auth_local", // Folder sesi
+    });
+
+    client[uuid] = new Client({
+        puppeteer: {
             headless: "new",
             executablePath:
                 process.env.CHROME_EXECUTABLE_PATH ||
                 "/usr/bin/google-chrome-stable",
-            userDataDir: sessionPath, // <-- Ini menggantikan fungsi LocalAuth dengan sempurna
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -95,26 +92,15 @@ const initialize = async (uuid, isOpen = false) => {
                 "--no-default-browser-check",
                 "--disable-site-isolation-trials",
                 "--disable-popup-blocking",
-                "--disable-blink-features=AutomationControlled", // <-- BENDERA ANTI-BOT PALING PENTING
+                /* "--proxy-server='direct://'",
+                "--proxy-bypass-list=*",
+                "--disable-default-apps",
+                "--window-size=1280,800", */ // Memaksa ukuran window agar render konsisten
             ],
-        });
-    } catch (err) {
-        console.error(
-            `[!] Gagal meluncurkan Stealth Browser untuk ${uuid}:`,
-            err.message,
-        );
-        throw err;
-    }
-
-    // 2. SAMBUNGKAN WHATSAPP-WEB.JS KE BROWSER SILUMAN TERSEBUT
-    client[uuid] = new Client({
-        puppeteer: {
-            browserWSEndpoint: browser.wsEndpoint(),
         },
+        authStrategy: authLocal,
     });
 
-    // Simpan referensi browser ke dalam object client agar nanti mudah di-close (Mencegah RAM Bocor)
-    client[uuid].stealthBrowser = browser;
     client[uuid].needsQr = false; // default
 
     return new Promise((resolve, reject) => {
@@ -141,7 +127,7 @@ const initialize = async (uuid, isOpen = false) => {
             resolve(uuid);
         });
 
-        client[uuid].on("authenticated", () => {
+        client[uuid].on("authenticated", (session) => {
             console.log(getIndoTime(), "[+] Authenticated:", uuid);
             sendWebHook(
                 webHookURL,
@@ -149,22 +135,21 @@ const initialize = async (uuid, isOpen = false) => {
                 "INSTANCE",
                 "SUCCESS_CREATE_INSTANCE",
             );
+            // eventLocal.emit(uuid, "ACTIVE");
         });
 
         client[uuid].on("auth_failure", async (msg) => {
             console.log(getIndoTime(), "[!] Auth Failure:", uuid, msg);
             sendWebHook(webHookURL, uuid, "INSTANCE", "AUTH_FAILURE");
 
-            // Hancurkan client & MATIKAN BROWSER SILUMAN
+            // Hancurkan client yang gagal
             if (client[uuid]) {
-                if (client[uuid].stealthBrowser) {
-                    await client[uuid].stealthBrowser.close().catch(() => {});
-                }
                 await client[uuid].destroy().catch(() => {});
-                delete client[uuid];
+                delete client[uuid]; // Hapus dari memori
             }
 
             await deleteFolderSession(uuid);
+            // Reject promise untuk memberi tahu pemanggil bahwa inisialisasi gagal
             reject(new Error(`Auth failure on ${uuid}: ${msg}`));
         });
 
@@ -175,7 +160,7 @@ const initialize = async (uuid, isOpen = false) => {
                 }, ACK : ${ack}`,
             );
 
-            let data = {
+            data = {
                 destination: msg.to,
                 msg: "null",
                 ack: ack,
@@ -183,6 +168,16 @@ const initialize = async (uuid, isOpen = false) => {
             };
             const state = "";
             sendWebHook(webHookURL, uuid, "DLR", state, data);
+
+            /*
+                == ACK VALUES ==
+                ACK_ERROR: -1
+                ACK_PENDING: 0              //waiting network
+                ACK_SERVER: 1               //ceklis 1
+                ACK_DEVICE: 2               //ceklist 2 
+                ACK_READ: 3                 //ceklist 2 and read
+                ACK_PLAYED: 4
+            */
         });
 
         client[uuid].on("ready", () => {
@@ -209,19 +204,25 @@ const initialize = async (uuid, isOpen = false) => {
             );
 
             if (msg.hasMedia) {
+                //if (process.env.type == "INTERACTIVE") {
                 const media = await msg.downloadMedia();
+
+                // --- PERUBAHAN DI SINI ---
+                // Tangkap msg.body sebagai caption
                 let captionText = await msg.body;
 
                 let dataMsg = {
                     id_msg: await msg.id.id,
                     type: "media",
                     from: await msg.from,
-                    to: await msg.to,
-                    caption: captionText,
+                    to: await msg.to, // Tambahkan 'to' agar sejajar dengan format text
+                    caption: captionText, // Kirim caption ke webhook
                     content: media,
                 };
 
+                // Hilangkan validasi message !== "" karena media bisa dikirim tanpa caption
                 sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
+                //}
             } else {
                 let message = await msg.body;
                 let dataMsg = {
@@ -247,11 +248,8 @@ const initialize = async (uuid, isOpen = false) => {
                 reason: reason,
             });
 
-            // Hancurkan client & MATIKAN BROWSER SILUMAN
+            // Hancurkan client terlebih dahulu
             if (client[uuid]) {
-                if (client[uuid].stealthBrowser) {
-                    await client[uuid].stealthBrowser.close().catch(() => {});
-                }
                 await client[uuid]
                     .destroy()
                     .catch((e) =>
@@ -260,11 +258,12 @@ const initialize = async (uuid, isOpen = false) => {
                             e.message,
                         ),
                     );
-                delete client[uuid];
+                delete client[uuid]; // Hapus dari objek global
             }
         });
 
         if (isOpen) {
+            // Tambahkan try...catch di sini sebagai lapisan pertahanan kedua
             try {
                 client[uuid].initialize();
             } catch (initError) {
@@ -272,7 +271,7 @@ const initialize = async (uuid, isOpen = false) => {
                     `[!] Direct initialize call failed for ${uuid}:`,
                     initError,
                 );
-                reject(initError);
+                reject(initError); // Pastikan promise di-reject jika ada error di sini
             }
         }
     });
@@ -283,16 +282,19 @@ async function scheduleInitialize(uuid) {
     restartQueue.add(async () => {
         console.log(`[QUEUE] Booting instance ${uuid}...`);
         try {
-            await initialize(uuid, true);
+            await initialize(uuid, true); // `true` untuk langsung initialize
             console.log(
                 `[QUEUE] Instance ${uuid} initialization process started.`,
             );
             await new Promise((resolve) => setTimeout(resolve, 5000));
         } catch (err) {
+            // Log error dengan detail, tapi jangan biarkan aplikasi crash.
             console.error(
                 `[QUEUE] FATAL ERROR during initialize for ${uuid}:`,
                 err.message,
             );
+            // Anda bisa menambahkan notifikasi webhook di sini jika perlu
+            // sendWebHook(webHookURL, uuid, "INSTANCE", "INIT_FAILED");
         }
     });
 }
@@ -311,11 +313,8 @@ async function _scheduleRestart(uuid) {
     restartQueue.add(async () => {
         console.log(`[QUEUE] Starting restart process for instance ${uuid}...`);
         try {
+            // Cek apakah client ada sebelum didestroy
             if (currentClient && typeof currentClient.destroy === "function") {
-                // MATIKAN BROWSER SILUMAN TERLEBIH DAHULU SAAT RESTART
-                if (currentClient.stealthBrowser) {
-                    await currentClient.stealthBrowser.close().catch(() => {});
-                }
                 await currentClient.destroy().catch((e) => {
                     console.error(
                         `[QUEUE] Error during destroy for ${uuid}:`,
@@ -325,8 +324,10 @@ async function _scheduleRestart(uuid) {
                 console.log(`[QUEUE] Client destroyed: ${uuid}`);
             }
 
+            // Hapus referensi lama dari memory biar bersih
             delete client[uuid];
 
+            // INI KUNCINYA: Tetap jalankan initialize walau client sebelumnya null
             await initialize(uuid, true);
             console.log(`[QUEUE] Client re-initialization queued: ${uuid}`);
         } catch (err) {
@@ -371,7 +372,7 @@ async function healthCheck(uuid) {
                     `[HEALTH] ${uuid} is waiting for QR scan, skip check.`,
                 );
             }
-            return;
+            return; // Hentikan pengecekan lebih lanjut untuk kasus ini
         }
 
         const state = await client[uuid].getState().catch(() => null);
@@ -380,6 +381,8 @@ async function healthCheck(uuid) {
                 `[HEALTH] ${uuid} is not connected (State: ${state}). Scheduling restart...`,
             );
             await _scheduleRestart(uuid);
+        } else {
+            //console.log(`[HEALTH] ${uuid} is healthy`);
         }
     } catch (e) {
         console.log(`[HEALTH] Error checking ${uuid}:`, e.message);
@@ -408,10 +411,12 @@ async function deleteFile(filePath) {
 
 async function deleteFolderSession(uuid) {
     try {
+        // Gunakan versi promise agar tidak blocking
         await fs.rm(`${__dirname}/.wwebjs_auth_local/session-${uuid}`, {
             recursive: true,
             force: true,
         });
+
         console.log(`[+] Session data deleted for ${uuid}`);
     } catch (e) {
         console.log("[!] Error deleteFolderSession:", uuid, e.message);
