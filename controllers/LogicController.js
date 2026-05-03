@@ -266,6 +266,7 @@ class LogicController {
     };
 
     processSpintax = (text) => {
+        if (!text) return "";
         // Mencari pola {kata1|kata2|kata3}
         const matches = text.match(/{[^{}]*}/g);
         if (!matches) return text;
@@ -338,9 +339,15 @@ class LogicController {
             const isWarmup =
                 idTransaction && String(idTransaction).startsWith("WARMUP");
             let spintaxFooter = "{code|uniq|rand|log}:";
+            let spintaxHeader = "";
+
             if (!isWarmup) {
-                spintaxFooter =
-                    "{Balas|Respon|Tolong balas} pesan ini {agar|supaya} {saling berinteraksi|akun tetap aktif|terjalin komunikasi} dan {menjaga|memastikan} akun ini {tetap aktif|tidak terblokir|aman}. {code|uniq|rand|log}:";
+                // Gunakan || "" agar jika null berubah jadi string kosong
+                spintaxFooter = bodyData.footer_msg || "";
+
+                spintaxHeader = !bodyData.header_msg // Pengecekan lebih aman untuk null/undefined/""
+                    ? ""
+                    : this.processSpintax(bodyData.header_msg) + "\n\n";
             }
             const randomFooter = this.processSpintax(spintaxFooter);
 
@@ -350,7 +357,7 @@ class LogicController {
                 .replace(/[^a-zA-Z0-9]/g, "")
                 .slice(0, 21);
 
-            const finalMessage = `${bodyData.message}\n\n${randomFooter}${kodeUnik}`;
+            const finalMessage = `${spintaxHeader}${bodyData.message}\n\n${randomFooter}${kodeUnik}`;
 
             // Step 2: Ambil chat dan tampilkan status mengetik
             const chat = await currentClient.getChatById(chatId);

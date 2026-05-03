@@ -2,12 +2,12 @@
 set -e
 
 # === Variabel ===
-DOMAIN="engine12.wasend.id"
+DOMAIN="engine11.wasend.id"
 REPO="https://github.com/mirzapurnandi/engine_wwebjs.git"
 APP_DIR="/var/www/engine_wwebjs"
 
 echo "=============================================="
-echo "🚀 DEPLOY STARTED (Ubuntu 24.04)"
+echo "DEPLOY STARTED (Ubuntu 24.04)"
 echo "=============================================="
 
 # === Update & Dependensi ===
@@ -15,11 +15,28 @@ echo "[1/10] Updating system..."
 sudo apt update -y && sudo apt upgrade -y
 sudo apt install -y curl wget git gnupg build-essential ufw unzip apt-transport-https software-properties-common
 
+echo "[FIX] Repair npm..."
+# Hapus npm bawaan rusak
+sudo rm -rf /usr/lib/node_modules/npm
+sudo rm -rf /usr/bin/npm
+sudo rm -rf /usr/bin/npx
+
+# Install ulang npm clean
+curl -qL https://www.npmjs.com/install.sh | sudo bash
+
 # === Install Node.js 22 ===
 echo "[2/10] Installing Node.js 22..."
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
-sudo npm install -g npm@latest pm2
+
+# Fix npm corrupt
+echo "[FIX] Installing stable npm..."
+corepack enable
+corepack prepare npm@10.8.2 --activate
+
+# Install pm2
+npm install -g pm2
+
 
 # === Install Google Chrome Stable ===
 echo "[4/10] Installing Google Chrome..."
@@ -89,7 +106,6 @@ echo "[10/10] Installing Zsh & Oh My Zsh..."
 
 sudo apt install -y zsh
 chsh -s $(which zsh)
-
 export RUNZSH=no
 export CHSH=no
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
@@ -108,7 +124,7 @@ zsh
 source ~/.zshrc
 
 echo "=============================================="
-echo "✅ DEPLOYMENT COMPLETE — SERVER READY!"
+echo "DEPLOYMENT COMPLETE SERVER READY!"
 echo "Domain: https://$DOMAIN"
 echo "PM2 App: engine_wwebjs"
 echo "=============================================="

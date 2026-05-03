@@ -204,6 +204,16 @@ const initialize = async (uuid, isOpen = false) => {
                 msgType = "media";
             }
 
+            let realPhone = "";
+            try {
+                const contact = await msg.getContact();
+                // contact.number biasanya berisi nomor murni (misal: 6281234567890) tanpa @c.us / @lid
+                realPhone = contact.number || (await msg.from).split("@")[0];
+            } catch (err) {
+                // Fallback jika gagal mengambil kontak
+                realPhone = (await msg.from).split("@")[0];
+            }
+
             console.log(
                 `${getIndoTime()} [INBOX] Receive New Message Type : ${msgType} | from : ${await msg.from} | to : ${await msg.to}`,
             );
@@ -216,6 +226,7 @@ const initialize = async (uuid, isOpen = false) => {
                     id_msg: await msg.id.id,
                     type: "media",
                     from: await msg.from,
+                    real_phone: realPhone,
                     to: await msg.to,
                     caption: captionText,
                     content: media,
@@ -228,6 +239,7 @@ const initialize = async (uuid, isOpen = false) => {
                     id_msg: await msg.id.id,
                     type: "text",
                     from: await msg.from,
+                    real_phone: realPhone,
                     to: await msg.to,
                     content: message,
                 };

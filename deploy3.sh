@@ -2,12 +2,12 @@
 set -e
 
 # === Variabel ===
-DOMAIN="engine12.wasend.id"
+DOMAIN="engine11.wasend.id"
 REPO="https://github.com/mirzapurnandi/engine_wwebjs.git"
 APP_DIR="/var/www/engine_wwebjs"
 
 echo "=============================================="
-echo "🚀 DEPLOY STARTED (Ubuntu 24.04)"
+echo "DEPLOY STARTED (Ubuntu 24.04)"
 echo "=============================================="
 
 # === Update & Dependensi ===
@@ -19,7 +19,30 @@ sudo apt install -y curl wget git gnupg build-essential ufw unzip apt-transport-
 echo "[2/10] Installing Node.js 22..."
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
-sudo npm install -g npm@latest pm2
+
+# =========================================================
+# 🔥 FIX NPM CORRUPT (WAJIB)
+# =========================================================
+echo "[3/10 FIX] Repair npm..."
+sudo rm -rf /usr/lib/node_modules/npm || true
+sudo rm -rf /usr/bin/npm || true
+sudo rm -rf /usr/bin/npx || true
+
+corepack enable
+corepack prepare npm@10.8.2 --activate
+
+# 🔥 FIX npm not found
+# Fix npm path
+export PATH="$HOME/.local/share/corepack/shims:$PATH"
+export PATH="/usr/local/bin:$PATH"
+export PATH="/usr/bin:$PATH"
+
+npm -v
+
+# install pm2
+npm install -g pm2
+
+# =========================================================
 
 # === Install Google Chrome Stable ===
 echo "[4/10] Installing Google Chrome..."
@@ -30,6 +53,32 @@ echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl
 
 sudo apt update
 sudo apt install -y google-chrome-stable
+
+# =========================================================
+# 🔥 FIX PUPPETEER DEPENDENCY (BIAR GAK CRASH)
+# =========================================================
+echo "[FIX] Installing Chrome dependencies..."
+sudo apt install -y \
+  fonts-liberation \
+  libappindicator3-1 \
+  libasound2t64 \
+  libatk-bridge2.0-0 \
+  libatk1.0-0 \
+  libcups2 \
+  libdbus-1-3 \
+  libgbm1 \
+  libgtk-3-0 \
+  libnspr4 \
+  libnss3 \
+  libx11-xcb1 \
+  libxcomposite1 \
+  libxdamage1 \
+  libxrandr2 \
+  xdg-utils
+  
+sudo apt install -y libgbm-dev wget gnupg
+sudo apt install -y ca-certificates fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 libgcc1 libgconf-2-4 libgdk-pixbuf2.0-0 libglib2.0-0 libgtk-3-0 libnspr4 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 lsb-release xdg-utils
+# =========================================================
 
 # === Clone Project ===
 echo "[5/10] Cloning repository..."
@@ -50,7 +99,6 @@ npm install
 # === PM2 Setup ===
 echo "[7/10] Starting app with PM2..."
 pm2 start npm --name "engine_wwebjs" -- run start
-# pm2 startup systemd -u $USER --hp $HOME
 pm2 save --force
 
 # === Nginx + SSL ===
@@ -89,7 +137,6 @@ echo "[10/10] Installing Zsh & Oh My Zsh..."
 
 sudo apt install -y zsh
 chsh -s $(which zsh)
-
 export RUNZSH=no
 export CHSH=no
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
@@ -108,7 +155,7 @@ zsh
 source ~/.zshrc
 
 echo "=============================================="
-echo "✅ DEPLOYMENT COMPLETE — SERVER READY!"
+echo "DEPLOYMENT COMPLETE SERVER READY!"
 echo "Domain: https://$DOMAIN"
 echo "PM2 App: engine_wwebjs"
 echo "=============================================="
