@@ -144,4 +144,14 @@ process.on("exit", (code) =>
     console.log(`[!] Process exiting with code: ${code}`),
 );
 
+process.on("unhandledRejection", (reason, promise) => {
+    console.error("[-] Unhandled Rejection at:", promise, "reason:", reason);
+    // Server tetap berjalan walau ada error puppeteer yang nyasar
+});
+
+process.on("uncaughtException", (error) => {
+    console.error("[-] Uncaught Exception thrown:", error.message);
+    // Server tetap berjalan
+});
+
 startApp();

@@ -1002,6 +1002,16 @@ class LogicController {
                     `[FORCE-RESET] Mencoba mematikan proses browser ${id_instance}...`,
                 );
                 try {
+                    // --- PERBAIKAN 1: Hentikan listener agar tidak ada proses tertinggal yang memicu crash ---
+                    currentClient.removeAllListeners();
+
+                    // --- PERBAIKAN 2: Pastikan stealth browser dimatikan terlebih dahulu ---
+                    if (currentClient.stealthBrowser) {
+                        await currentClient.stealthBrowser
+                            .close()
+                            .catch(() => {});
+                    }
+
                     // Jangan tunggu selamanya, jika 10 detik tidak mati, anggap saja hang
                     await Promise.race([
                         currentClient.destroy(),
@@ -1029,12 +1039,18 @@ class LogicController {
             }
 
             // Step 3: Trigger inisialisasi ulang (Non-Blocking)
-            initialize(id_instance, true).catch((err) => {
-                console.error(
-                    `[FORCE-RESET] Gagal inisialisasi ulang async untuk ${id_instance}:`,
-                    err.message,
+            // --- PERBAIKAN 3: Bungkus dengan jeda 3 detik untuk mencegah tabrakan port/cache ---
+            setTimeout(() => {
+                console.log(
+                    `[FORCE-RESET] Memulai inisialisasi ulang untuk ${id_instance}...`,
                 );
-            });
+                initialize(id_instance, true).catch((err) => {
+                    console.error(
+                        `[FORCE-RESET] Gagal inisialisasi ulang async untuk ${id_instance}:`,
+                        err.message,
+                    );
+                });
+            }, 3000);
 
             sendWebHook(
                 process.env.HOST_WEBHOOK,
