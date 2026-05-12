@@ -345,12 +345,11 @@ class LogicController {
                 // Gunakan || "" agar jika null berubah jadi string kosong
                 spintaxFooter = bodyData.footer_msg || "";
 
-                spintaxHeader = !bodyData.header_msg // Pengecekan lebih aman untuk null/undefined/""
+                spintaxHeader = !bodyData.header_msg
                     ? ""
                     : this.processSpintax(bodyData.header_msg) + "\n\n";
             }
             const randomFooter = this.processSpintax(spintaxFooter);
-
             const kodeUnik = crypto
                 .randomBytes(16) // Naikkan sedikit bytes-nya agar slice 21 selalu terpenuhi
                 .toString("base64")
@@ -656,25 +655,27 @@ class LogicController {
             }
 
             // --- MANAJEMEN CAPTION & FOOTER ---
-            let finalCaption = bodyData.message || "";
             const isWarmup =
                 idTransaction && String(idTransaction).startsWith("WARMUP");
+            let spintaxFooter = "{code|uniq|rand|log}:";
+            let spintaxHeader = "";
 
             // Hanya tambahkan Footer unik jika ini BUKAN pesan Warmup
             if (!isWarmup) {
-                const spintaxFooter =
-                    "{Balas|Respon|Tolong balas} pesan ini {agar|supaya} {saling berinteraksi|akun tetap aktif|terjalin komunikasi} dan {menjaga|memastikan} akun ini {tetap aktif|tidak terblokir|aman}. {code|uniq|rand|log}:";
+                spintaxFooter = bodyData.footer_msg || "";
 
-                const randomFooter = this.processSpintax(spintaxFooter);
-
-                const kodeUnik = crypto
-                    .randomBytes(16)
-                    .toString("base64")
-                    .replace(/[^a-zA-Z0-9]/g, "")
-                    .slice(0, 21);
-
-                finalCaption = `${finalCaption}\n\n${randomFooter} ${kodeUnik}`;
+                spintaxHeader = !bodyData.header_msg
+                    ? ""
+                    : this.processSpintax(bodyData.header_msg) + "\n\n";
             }
+            const randomFooter = this.processSpintax(spintaxFooter);
+            const kodeUnik = crypto
+                .randomBytes(16)
+                .toString("base64")
+                .replace(/[^a-zA-Z0-9]/g, "")
+                .slice(0, 21);
+
+            const finalMessage = `${spintaxHeader}${bodyData.message}\n\n${randomFooter}${kodeUnik}`;
 
             // --- SIMULASI TYPING ---
             const chat = await currentClient.getChatById(chatId);
@@ -734,7 +735,7 @@ class LogicController {
                 chatId,
                 contentMSG,
                 {
-                    caption: finalCaption,
+                    caption: finalMessage,
                     waitUntilMsgSent: true,
                 },
             );
