@@ -54,7 +54,7 @@ const initialize = async (uuid, isOpen = false) => {
         authStrategy: authLocal,
         puppeteer: {
             // JANGAN gunakan "new", gunakan true agar Chrome tidak menidurkan Service Worker WA
-            headless: false,
+            headless: true,
             executablePath:
                 process.env.CHROME_EXECUTABLE_PATH ||
                 "/usr/bin/google-chrome-stable",
