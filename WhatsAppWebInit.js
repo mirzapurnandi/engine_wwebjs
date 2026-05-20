@@ -2,13 +2,8 @@ const path = require("path");
 const fs = require("fs").promises;
 require("dotenv").config({ quiet: true });
 
-// Import whatsapp-web.js (Tanpa LocalAuth karena sesi akan di-handle langsung oleh Puppeteer)
-const { Client } = require("whatsapp-web.js");
-
-// === IMPORT PUPPETEER SILUMAN ===
-const puppeteer = require("puppeteer-extra");
-const StealthPlugin = require("puppeteer-extra-plugin-stealth");
-puppeteer.use(StealthPlugin());
+// KEMBALI MENGGUNAKAN BAWAAN WWEBJS SEPENUHNYA
+const { Client, LocalAuth } = require("whatsapp-web.js");
 
 const qrPlugin = require("qrcode");
 const moment = require("moment-timezone");
@@ -29,29 +24,10 @@ const restartQueue = new PQueue({
     intervalCap: 1,
 });
 
-restartQueue.on("active", () => {
-    console.log(
-        `${getIndoTime()} [QUEUE] Task started. Pending: ${
-            restartQueue.pending
-        } | Running: ${restartQueue.size}`,
-    );
-});
-restartQueue.on("completed", () => {
-    console.log(
-        `${getIndoTime()} [QUEUE] Task completed. Pending: ${
-            restartQueue.pending
-        } | Running: ${restartQueue.size}`,
-    );
-});
-restartQueue.on("error", (error) => {
-    console.log(`${getIndoTime()} [QUEUE] Task error: ${error.message}`);
-});
-
 let client = {};
 const webHookURL = process.env.HOST_WEBHOOK;
 const authToken = process.env.AUTH_TOKEN;
-
-const QR_TIMEOUT_MS = 50 * 60 * 1000; // 50 menit
+const QR_TIMEOUT_MS = 50 * 60 * 1000;
 
 // === Initialize / create instance ===
 const initialize = async (uuid, isOpen = false) => {
@@ -67,15 +43,21 @@ const initialize = async (uuid, isOpen = false) => {
         console.log(`[CLEANUP] Lock file cleared for ${uuid}`);
     } catch (e) {}
 
-    let browser;
-    try {
-        // 1. BUKA BROWSER MANUAL MENGGUNAKAN PUPPETEER EXTRA (STEALTH)
-        browser = await puppeteer.launch({
-            headless: "new",
+    // KITA KEMBALI MENGGUNAKAN LOCAL AUTH (STABIL UNTUK WA)
+    const authLocal = new LocalAuth({
+        clientId: uuid,
+        dataPath: "./.wwebjs_auth_local",
+    });
+
+    // IMPLEMENTASI NATIVE STEALTH DI DALAM CLIENT
+    client[uuid] = new Client({
+        authStrategy: authLocal,
+        puppeteer: {
+            // JANGAN gunakan "new", gunakan true agar Chrome tidak menidurkan Service Worker WA
+            headless: false,
             executablePath:
                 process.env.CHROME_EXECUTABLE_PATH ||
                 "/usr/bin/google-chrome-stable",
-            userDataDir: sessionPath, // <-- Ini menggantikan fungsi LocalAuth dengan sempurna
             args: [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
@@ -95,27 +77,20 @@ const initialize = async (uuid, isOpen = false) => {
                 "--no-default-browser-check",
                 "--disable-site-isolation-trials",
                 "--disable-popup-blocking",
-                "--disable-blink-features=AutomationControlled", // <-- BENDERA ANTI-BOT PALING PENTING
+                "--disable-blink-features=AutomationControlled", // INI PENGGANTI PLUGIN STEALTH UTAMA
+                "--lang=id-ID,id",
             ],
-        });
-    } catch (err) {
-        console.error(
-            `[!] Gagal meluncurkan Stealth Browser untuk ${uuid}:`,
-            err.message,
-        );
-        throw err;
-    }
-
-    // 2. SAMBUNGKAN WHATSAPP-WEB.JS KE BROWSER SILUMAN TERSEBUT
-    client[uuid] = new Client({
-        puppeteer: {
-            browserWSEndpoint: browser.wsEndpoint(),
+            env: {
+                ...process.env,
+                TZ: "Asia/Jakarta",
+            },
         },
+        // GANTI USER AGENT AGAR TIDAK TERBACA SEBAGAI HEADLESS CHROME/BOT
+        userAgent:
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
 
-    // Simpan referensi browser ke dalam object client agar nanti mudah di-close (Mencegah RAM Bocor)
-    client[uuid].stealthBrowser = browser;
-    client[uuid].needsQr = false; // default
+    client[uuid].needsQr = false;
 
     return new Promise((resolve, reject) => {
         client[uuid].on("qr", (qr) => {
@@ -155,34 +130,25 @@ const initialize = async (uuid, isOpen = false) => {
             console.log(getIndoTime(), "[!] Auth Failure:", uuid, msg);
             sendWebHook(webHookURL, uuid, "INSTANCE", "AUTH_FAILURE");
 
-            // Hancurkan client & MATIKAN BROWSER SILUMAN
             if (client[uuid]) {
-                if (client[uuid].stealthBrowser) {
-                    await client[uuid].stealthBrowser.close().catch(() => {});
-                }
                 await client[uuid].destroy().catch(() => {});
                 delete client[uuid];
             }
-
             await deleteFolderSession(uuid);
             reject(new Error(`Auth failure on ${uuid}: ${msg}`));
         });
 
         client[uuid].on("message_ack", (msg, ack) => {
             console.log(
-                `${getIndoTime()} [+] DLR : ${uuid}, ID : ${
-                    msg.id.id
-                }, ACK : ${ack}`,
+                `${getIndoTime()} [+] DLR : ${uuid}, ID : ${msg.id.id}, ACK : ${ack}`,
             );
-
             let data = {
                 destination: msg.to,
                 msg: "null",
                 ack: ack,
                 id: msg.id.id,
             };
-            const state = "";
-            sendWebHook(webHookURL, uuid, "DLR", state, data);
+            sendWebHook(webHookURL, uuid, "DLR", "", data);
         });
 
         client[uuid].on("ready", () => {
@@ -199,18 +165,13 @@ const initialize = async (uuid, isOpen = false) => {
         });
 
         client[uuid].on("message", async (msg) => {
-            let msgType = "text";
-            if (msg.hasMedia) {
-                msgType = "media";
-            }
+            let msgType = msg.hasMedia ? "media" : "text";
 
             let realPhone = "";
             try {
                 const contact = await msg.getContact();
-                // contact.number biasanya berisi nomor murni (misal: 6281234567890) tanpa @c.us / @lid
                 realPhone = contact.number || (await msg.from).split("@")[0];
             } catch (err) {
-                // Fallback jika gagal mengambil kontak
                 realPhone = (await msg.from).split("@")[0];
             }
 
@@ -221,7 +182,6 @@ const initialize = async (uuid, isOpen = false) => {
             if (msg.hasMedia) {
                 const media = await msg.downloadMedia();
                 let captionText = await msg.body;
-
                 let dataMsg = {
                     id_msg: await msg.id.id,
                     type: "media",
@@ -231,7 +191,6 @@ const initialize = async (uuid, isOpen = false) => {
                     caption: captionText,
                     content: media,
                 };
-
                 sendWebHook(webHookURL, uuid, "INBOX_MESSAGE", "", dataMsg);
             } else {
                 let message = await msg.body;
@@ -249,29 +208,14 @@ const initialize = async (uuid, isOpen = false) => {
             }
         });
 
-        client[uuid].on("change_state", (state) => {
-            console.log(`[#] ${uuid} CHANGE STATE`, state);
-        });
-
         client[uuid].on("disconnected", async (reason) => {
             console.log(getIndoTime(), "[!] Disconnected:", uuid, reason);
             sendWebHook(webHookURL, uuid, "INSTANCE", "DISCONNECT", {
                 reason: reason,
             });
 
-            // Hancurkan client & MATIKAN BROWSER SILUMAN
             if (client[uuid]) {
-                if (client[uuid].stealthBrowser) {
-                    await client[uuid].stealthBrowser.close().catch(() => {});
-                }
-                await client[uuid]
-                    .destroy()
-                    .catch((e) =>
-                        console.error(
-                            `Error destroying client ${uuid}:`,
-                            e.message,
-                        ),
-                    );
+                await client[uuid].destroy().catch(() => {});
                 delete client[uuid];
             }
         });
@@ -290,15 +234,11 @@ const initialize = async (uuid, isOpen = false) => {
     });
 };
 
-// === Schedule Init / Restart via queue ===
 async function scheduleInitialize(uuid) {
     restartQueue.add(async () => {
         console.log(`[QUEUE] Booting instance ${uuid}...`);
         try {
             await initialize(uuid, true);
-            console.log(
-                `[QUEUE] Instance ${uuid} initialization process started.`,
-            );
             await new Promise((resolve) => setTimeout(resolve, 5000));
         } catch (err) {
             console.error(
@@ -314,42 +254,22 @@ async function _scheduleRestart(uuid) {
     if (currentClient) {
         currentClient.isRefreshing = true;
         sendWebHook(webHookURL, uuid, "INSTANCE", "RESTARTING");
-    } else {
-        console.log(
-            `[QUEUE] Instance ${uuid} not found/dead. Forcing re-initialization...`,
-        );
     }
 
     restartQueue.add(async () => {
         console.log(`[QUEUE] Starting restart process for instance ${uuid}...`);
         try {
             if (currentClient && typeof currentClient.destroy === "function") {
-                // MATIKAN BROWSER SILUMAN TERLEBIH DAHULU SAAT RESTART
-                if (currentClient.stealthBrowser) {
-                    await currentClient.stealthBrowser.close().catch(() => {});
-                }
-                await currentClient.destroy().catch((e) => {
-                    console.error(
-                        `[QUEUE] Error during destroy for ${uuid}:`,
-                        e.message,
-                    );
-                });
-                console.log(`[QUEUE] Client destroyed: ${uuid}`);
+                await currentClient.destroy().catch(() => {});
             }
-
             delete client[uuid];
-
             await initialize(uuid, true);
-            console.log(`[QUEUE] Client re-initialization queued: ${uuid}`);
         } catch (err) {
             console.error(
                 `[QUEUE] FATAL restart failed for ${uuid}:`,
                 err.message,
             );
         } finally {
-            console.log(
-                `[QUEUE] Finished restart attempt for ${uuid}. Resetting refresh flag.`,
-            );
             if (client[uuid]) {
                 client[uuid].isRefreshing = false;
             }
@@ -357,49 +277,30 @@ async function _scheduleRestart(uuid) {
     });
 }
 
-// === Health check ===
 async function healthCheck(uuid) {
     try {
         if (!client[uuid]) {
-            console.log(
-                `[HEALTH] Instance ${uuid} is missing/dead. Scheduling restart...`,
-            );
             return _scheduleRestart(uuid);
         }
         if (client[uuid].isRefreshing) return;
 
         if (client[uuid].needsQr && client[uuid].qrRequestTimestamp) {
             const timeSinceQr = Date.now() - client[uuid].qrRequestTimestamp;
-
             if (timeSinceQr > QR_TIMEOUT_MS) {
-                console.log(
-                    `[HEALTH] ${uuid} has been waiting for QR scan for too long (${Math.round(
-                        timeSinceQr / 1000,
-                    )}s). Forcing restart...`,
-                );
                 await _scheduleRestart(uuid);
-            } else {
-                console.log(
-                    `[HEALTH] ${uuid} is waiting for QR scan, skip check.`,
-                );
             }
             return;
         }
 
         const state = await client[uuid].getState().catch(() => null);
         if (!state || state !== "CONNECTED") {
-            console.log(
-                `[HEALTH] ${uuid} is not connected (State: ${state}). Scheduling restart...`,
-            );
             await _scheduleRestart(uuid);
         }
     } catch (e) {
-        console.log(`[HEALTH] Error checking ${uuid}:`, e.message);
         await _scheduleRestart(uuid);
     }
 }
 
-// === Utils ===
 function setOnline(uuid) {
     client[uuid]?.sendPresenceAvailable().catch(() => notifyDisconnect(uuid));
 }
@@ -412,10 +313,7 @@ async function deleteFile(filePath) {
     try {
         if (!filePath) return;
         await fs.unlink(filePath);
-    } catch (error) {
-        if (error.code === "ENOENT") return;
-        console.error(`[!] Gagal menghapus file ${filePath}:`, error.message);
-    }
+    } catch (error) {}
 }
 
 async function deleteFolderSession(uuid) {
@@ -425,9 +323,7 @@ async function deleteFolderSession(uuid) {
             force: true,
         });
         console.log(`[+] Session data deleted for ${uuid}`);
-    } catch (e) {
-        console.log("[!] Error deleteFolderSession:", uuid, e.message);
-    }
+    } catch (e) {}
 }
 
 async function sendWebHook(url, uuid, type, state = null, data = {}) {

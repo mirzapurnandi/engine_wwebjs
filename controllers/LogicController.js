@@ -1006,13 +1006,6 @@ class LogicController {
                     // --- PERBAIKAN 1: Hentikan listener agar tidak ada proses tertinggal yang memicu crash ---
                     currentClient.removeAllListeners();
 
-                    // --- PERBAIKAN 2: Pastikan stealth browser dimatikan terlebih dahulu ---
-                    if (currentClient.stealthBrowser) {
-                        await currentClient.stealthBrowser
-                            .close()
-                            .catch(() => {});
-                    }
-
                     // Jangan tunggu selamanya, jika 10 detik tidak mati, anggap saja hang
                     await Promise.race([
                         currentClient.destroy(),
