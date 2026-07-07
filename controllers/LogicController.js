@@ -21,6 +21,123 @@ function getIndoTime() {
     return moment().tz("Asia/Jakarta").format("dddd, D MMMM YYYY HH:mm:ss");
 }
 
+const quranData = [
+    { nama: "Al-Fatihah", max_ayat: 7 },
+    { nama: "Al-Baqarah", max_ayat: 286 },
+    { nama: "Ali 'Imran", max_ayat: 200 },
+    { nama: "An-Nisa'", max_ayat: 176 },
+    { nama: "Al-Ma'idah", max_ayat: 120 },
+    { nama: "Al-An'am", max_ayat: 165 },
+    { nama: "Al-A'raf", max_ayat: 206 },
+    { nama: "Al-Anfal", max_ayat: 75 },
+    { nama: "At-Taubah", max_ayat: 129 },
+    { nama: "Yunus", max_ayat: 109 },
+    { nama: "Hud", max_ayat: 123 },
+    { nama: "Yusuf", max_ayat: 111 },
+    { nama: "Ar-Ra'd", max_ayat: 43 },
+    { nama: "Ibrahim", max_ayat: 52 },
+    { nama: "Al-Hijr", max_ayat: 99 },
+    { nama: "An-Nahl", max_ayat: 128 },
+    { nama: "Al-Isra'", max_ayat: 111 },
+    { nama: "Al-Kahf", max_ayat: 110 },
+    { nama: "Maryam", max_ayat: 98 },
+    { nama: "Taha", max_ayat: 135 },
+    { nama: "Al-Anbiya'", max_ayat: 112 },
+    { nama: "Al-Hajj", max_ayat: 78 },
+    { nama: "Al-Mu'minun", max_ayat: 118 },
+    { nama: "An-Nur", max_ayat: 64 },
+    { nama: "Al-Furqan", max_ayat: 77 },
+    { nama: "Ash-Shu'ara'", max_ayat: 227 },
+    { nama: "An-Naml", max_ayat: 93 },
+    { nama: "Al-Qasas", max_ayat: 88 },
+    { nama: "Al-'Ankabut", max_ayat: 69 },
+    { nama: "Ar-Rum", max_ayat: 60 },
+    { nama: "Luqman", max_ayat: 34 },
+    { nama: "As-Sajdah", max_ayat: 30 },
+    { nama: "Al-Ahzab", max_ayat: 73 },
+    { nama: "Saba'", max_ayat: 54 },
+    { nama: "Fatir", max_ayat: 45 },
+    { nama: "Yasin", max_ayat: 83 },
+    { nama: "As-Saffat", max_ayat: 182 },
+    { nama: "Sad", max_ayat: 88 },
+    { nama: "Az-Zumar", max_ayat: 75 },
+    { nama: "Ghafir", max_ayat: 85 },
+    { nama: "Fussilat", max_ayat: 54 },
+    { nama: "Ash-Shura", max_ayat: 53 },
+    { nama: "Az-Zukhruf", max_ayat: 89 },
+    { nama: "Ad-Dukhan", max_ayat: 59 },
+    { nama: "Al-Jathiyah", max_ayat: 37 },
+    { nama: "Al-Ahqaf", max_ayat: 35 },
+    { nama: "Muhammad", max_ayat: 38 },
+    { nama: "Al-Fath", max_ayat: 29 },
+    { nama: "Al-Hujurat", max_ayat: 18 },
+    { nama: "Qaf", max_ayat: 45 },
+    { nama: "Adh-Dhariyat", max_ayat: 60 },
+    { nama: "At-Tur", max_ayat: 49 },
+    { nama: "An-Najm", max_ayat: 62 },
+    { nama: "Al-Qamar", max_ayat: 55 },
+    { nama: "Ar-Rahman", max_ayat: 78 },
+    { nama: "Al-Waqi'ah", max_ayat: 96 },
+    { nama: "Al-Hadid", max_ayat: 29 },
+    { nama: "Al-Mujadilah", max_ayat: 22 },
+    { nama: "Al-Hashr", max_ayat: 24 },
+    { nama: "Al-Mumtahanah", max_ayat: 13 },
+    { nama: "As-Saff", max_ayat: 14 },
+    { nama: "Al-Jumu'ah", max_ayat: 11 },
+    { nama: "Al-Munafiqun", max_ayat: 11 },
+    { nama: "At-Taghabun", max_ayat: 18 },
+    { nama: "At-Talaq", max_ayat: 12 },
+    { nama: "At-Tahrim", max_ayat: 12 },
+    { nama: "Al-Mulk", max_ayat: 30 },
+    { nama: "Al-Qalam", max_ayat: 52 },
+    { nama: "Al-Haqqah", max_ayat: 52 },
+    { nama: "Al-Ma'arij", max_ayat: 44 },
+    { nama: "Nuh", max_ayat: 28 },
+    { nama: "Al-Jinn", max_ayat: 28 },
+    { nama: "Al-Muzzammil", max_ayat: 20 },
+    { nama: "Al-Muddaththir", max_ayat: 56 },
+    { nama: "Al-Qiyamah", max_ayat: 40 },
+    { nama: "Al-Insan", max_ayat: 31 },
+    { nama: "Al-Mursalat", max_ayat: 50 },
+    { nama: "An-Naba'", max_ayat: 40 },
+    { nama: "An-Nazi'at", max_ayat: 46 },
+    { nama: "'Abasa", max_ayat: 42 },
+    { nama: "At-Takwir", max_ayat: 29 },
+    { nama: "Al-Infitar", max_ayat: 19 },
+    { nama: "Al-Mutaffifin", max_ayat: 36 },
+    { nama: "Al-Inshiqaq", max_ayat: 25 },
+    { nama: "Al-Buruj", max_ayat: 22 },
+    { nama: "At-Tariq", max_ayat: 17 },
+    { nama: "Al-A'la", max_ayat: 19 },
+    { nama: "Al-Ghashiyah", max_ayat: 26 },
+    { nama: "Al-Fajr", max_ayat: 30 },
+    { nama: "Al-Balad", max_ayat: 20 },
+    { nama: "Ash-Shams", max_ayat: 15 },
+    { nama: "Al-Lail", max_ayat: 21 },
+    { nama: "Ad-Duha", max_ayat: 11 },
+    { nama: "Ash-Sharh", max_ayat: 8 },
+    { nama: "At-Tin", max_ayat: 8 },
+    { nama: "Al-'Alaq", max_ayat: 19 },
+    { nama: "Al-Qadr", max_ayat: 5 },
+    { nama: "Al-Bayyinah", max_ayat: 8 },
+    { nama: "Az-Zalzalah", max_ayat: 8 },
+    { nama: "Al-'Adiyat", max_ayat: 11 },
+    { nama: "Al-Qari'ah", max_ayat: 11 },
+    { nama: "At-Takathur", max_ayat: 8 },
+    { nama: "Al-'Asr", max_ayat: 3 },
+    { nama: "Al-Humazah", max_ayat: 9 },
+    { nama: "Al-Fil", max_ayat: 5 },
+    { nama: "Quraysh", max_ayat: 4 },
+    { nama: "Al-Ma'un", max_ayat: 7 },
+    { nama: "Al-Kawthar", max_ayat: 3 },
+    { nama: "Al-Kafirun", max_ayat: 6 },
+    { nama: "An-Nasr", max_ayat: 3 },
+    { nama: "Al-Masad", max_ayat: 5 },
+    { nama: "Al-Ikhlas", max_ayat: 4 },
+    { nama: "Al-Falaq", max_ayat: 5 },
+    { nama: "An-Nas", max_ayat: 6 },
+];
+
 class LogicController {
     constructor() {
         this.dataClient = dataClient;
@@ -283,6 +400,34 @@ class LogicController {
         return text;
     };
 
+    generateRandomQuranQuote = async () => {
+        const templateAwalan =
+            "{baca|lihat|simak|renungan|qs|surat|kutipan|catatan|referensi}";
+        const awalanAcak = this.processSpintax(templateAwalan);
+
+        const randomIndex = Math.floor(Math.random() * quranData.length);
+        const selectedSurah = quranData[randomIndex];
+
+        const nomorSurah = randomIndex + 1;
+
+        const randomAyat =
+            Math.floor(Math.random() * selectedSurah.max_ayat) + 1;
+
+        const formatVariations = [
+            `${awalanAcak}: (${nomorSurah}) ${selectedSurah.nama} ayat ${randomAyat}`, // Opsi 1
+            `${awalanAcak}: ${selectedSurah.nama} (${nomorSurah}) ayat ${randomAyat}`, // Opsi 2
+            `${awalanAcak}: ${selectedSurah.nama} ${nomorSurah}:${randomAyat}`, // Opsi 3
+            `${awalanAcak}: QS. ${selectedSurah.nama} [${nomorSurah}:${randomAyat}]`, // Variasi tambahan
+            `${awalanAcak} - ${selectedSurah.nama} ${nomorSurah}:${randomAyat}`, // Mengganti titik dua dengan strip
+        ];
+
+        const randomFormat =
+            formatVariations[
+                Math.floor(Math.random() * formatVariations.length)
+            ];
+        return randomFormat;
+    };
+
     sendMessageWithTyping = async (req, res) => {
         const bodyData = req.body;
         const idTransaction = bodyData.id_transaction || null;
@@ -338,25 +483,24 @@ class LogicController {
 
             const isWarmup =
                 idTransaction && String(idTransaction).startsWith("WARMUP");
-            let spintaxFooter = "{code|uniq|rand|log}:";
-            let spintaxHeader = "";
+            // let spintaxFooter = "{code|uniq|rand|log}:";
 
+            let finalMessage = bodyData.message;
             if (!isWarmup) {
-                // Gunakan || "" agar jika null berubah jadi string kosong
-                spintaxFooter = bodyData.footer_msg || "";
-
-                spintaxHeader = !bodyData.header_msg
+                let spintaxFooter = bodyData.footer_msg || "";
+                let spintaxHeader = !bodyData.header_msg
                     ? ""
                     : this.processSpintax(bodyData.header_msg) + "\n\n";
-            }
-            const randomFooter = this.processSpintax(spintaxFooter);
-            const kodeUnik = crypto
-                .randomBytes(16) // Naikkan sedikit bytes-nya agar slice 21 selalu terpenuhi
-                .toString("base64")
-                .replace(/[^a-zA-Z0-9]/g, "")
-                .slice(0, 21);
 
-            const finalMessage = `${spintaxHeader}${bodyData.message}\n\n${randomFooter}${kodeUnik}`;
+                if (spintaxFooter === "NONE" && spintaxHeader === "") {
+                    finalMessage = bodyData.message;
+                } else {
+                    const footerUnik = await this.generateRandomQuranQuote();
+                    const randomFooter = this.processSpintax(spintaxFooter);
+                    finalMessage = `${spintaxHeader}${bodyData.message}\n\n${randomFooter}\n${footerUnik}`;
+                }
+            }
+            // const kodeUnik = crypto.randomBytes(16).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 9);
 
             // Step 2: Ambil chat dan tampilkan status mengetik
             const chat = await currentClient.getChatById(chatId);
@@ -657,25 +801,27 @@ class LogicController {
             // --- MANAJEMEN CAPTION & FOOTER ---
             const isWarmup =
                 idTransaction && String(idTransaction).startsWith("WARMUP");
-            let spintaxFooter = "{code|uniq|rand|log}:";
-            let spintaxHeader = "";
+            //let spintaxFooter = "{code|uniq|rand|log}:";
+            //let spintaxHeader = "";
 
+            let finalMessage = bodyData.message;
             // Hanya tambahkan Footer unik jika ini BUKAN pesan Warmup
             if (!isWarmup) {
-                spintaxFooter = bodyData.footer_msg || "";
+                let spintaxFooter = bodyData.footer_msg || "";
 
-                spintaxHeader = !bodyData.header_msg
+                let spintaxHeader = !bodyData.header_msg
                     ? ""
                     : this.processSpintax(bodyData.header_msg) + "\n\n";
-            }
-            const randomFooter = this.processSpintax(spintaxFooter);
-            const kodeUnik = crypto
-                .randomBytes(16)
-                .toString("base64")
-                .replace(/[^a-zA-Z0-9]/g, "")
-                .slice(0, 21);
 
-            const finalMessage = `${spintaxHeader}${bodyData.message}\n\n${randomFooter}${kodeUnik}`;
+                if (spintaxFooter === "NONE" && spintaxHeader === "") {
+                    finalMessage = bodyData.message;
+                } else {
+                    const randomFooter = this.processSpintax(spintaxFooter);
+                    const footerUnik = await this.generateRandomQuranQuote();
+                    finalMessage = `${spintaxHeader}${bodyData.message}\n\n${randomFooter}\n${footerUnik}`;
+                }
+            }
+            // const kodeUnik = crypto.randomBytes(16).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 9);
 
             // --- SIMULASI TYPING ---
             const chat = await currentClient.getChatById(chatId);
