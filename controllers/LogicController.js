@@ -527,7 +527,7 @@ class LogicController {
             await chat.clearState();
 
             // ========================================================
-            // Step 5: Fake Typing di Background (Tidak menahan response)
+            // Fake Typing di Background (Tidak menahan response)
             // ========================================================
             (async () => {
                 try {
@@ -917,6 +917,35 @@ class LogicController {
 
             // --- CLEAR TYPING ---
             await chat.clearState();
+
+            // ========================================================
+            // Fake Typing di Background (Tidak menahan response)
+            // ========================================================
+            (async () => {
+                try {
+                    // Mulai simulasi mengetik lagi
+                    await chat.sendStateTyping();
+
+                    // Random waktu antara 7000ms (7 detik) s/d 10000ms (10 detik)
+                    const fakeTypingDelay =
+                        Math.floor(Math.random() * (10000 - 7000 + 1)) + 7000;
+
+                    // Jeda selama waktu random tersebut
+                    await new Promise((resolve) =>
+                        setTimeout(resolve, fakeTypingDelay),
+                    );
+
+                    // Hentikan status mengetik
+                    await chat.clearState();
+                } catch (fakeErr) {
+                    // Tangkap error diam-diam (misal jika tiba-tiba instance putus saat fake typing berjalan)
+                    console.error(
+                        `[FAKE TYPING ERROR] on ${chatId}:`,
+                        fakeErr.message,
+                    );
+                }
+            })();
+            // ========================================================
 
             return res.status(200).json({
                 code: 200,
