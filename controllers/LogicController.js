@@ -325,7 +325,7 @@ class LogicController {
         // Jika panjang pesan > delay → pakai aturan limit
         if (msgLength > delay) {
             maxDelay = (delay - 1) * 1000;
-            minDelay = Math.min(minDelay, maxDelay - 500); // tetap lebih kecil
+            minDelay = Math.min(minDelay, Math.floor(maxDelay * 0.7));
             if (minDelay < 1500) minDelay = 1500;
         } else {
             // tetap hormati batas delay kalau dikasih
@@ -333,7 +333,7 @@ class LogicController {
         }
 
         // Pastikan minDelay < maxDelay
-        if (minDelay >= maxDelay) minDelay = maxDelay - 500;
+        if (minDelay >= maxDelay) minDelay = Math.floor(maxDelay * 0.7);
 
         // Random di antara minDelay dan maxDelay
         const randomDelay =
@@ -525,6 +525,35 @@ class LogicController {
 
             // Step 4: Hentikan status mengetik
             await chat.clearState();
+
+            // ========================================================
+            // Step 5: Fake Typing di Background (Tidak menahan response)
+            // ========================================================
+            (async () => {
+                try {
+                    // Mulai simulasi mengetik lagi
+                    await chat.sendStateTyping();
+
+                    // Random waktu antara 7000ms (7 detik) s/d 10000ms (10 detik)
+                    const fakeTypingDelay =
+                        Math.floor(Math.random() * (10000 - 7000 + 1)) + 7000;
+
+                    // Jeda selama waktu random tersebut
+                    await new Promise((resolve) =>
+                        setTimeout(resolve, fakeTypingDelay),
+                    );
+
+                    // Hentikan status mengetik
+                    await chat.clearState();
+                } catch (fakeErr) {
+                    // Tangkap error diam-diam (misal jika tiba-tiba instance putus saat fake typing berjalan)
+                    console.error(
+                        `[FAKE TYPING ERROR] on ${chatId}:`,
+                        fakeErr.message,
+                    );
+                }
+            })();
+            // ========================================================
 
             const response = {
                 code: 200,
