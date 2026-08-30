@@ -531,12 +531,18 @@ class LogicController {
             // ========================================================
             (async () => {
                 try {
+                    // [PERBAIKAN] Jeda nafas agar server WA mereset status chat (800ms - 1500ms)
+                    const breathDelay =
+                        Math.floor(Math.random() * (1300 - 700 + 1)) + 700;
+                    await new Promise((resolve) =>
+                        setTimeout(resolve, breathDelay),
+                    );
                     // Mulai simulasi mengetik lagi
                     await chat.sendStateTyping();
 
-                    // Random waktu antara 7000ms (7 detik) s/d 10000ms (10 detik)
+                    // Random waktu antara 7000ms (7 detik) s/d 11000ms (11 detik)
                     const fakeTypingDelay =
-                        Math.floor(Math.random() * (10000 - 7000 + 1)) + 7000;
+                        Math.floor(Math.random() * (11000 - 7000 + 1)) + 7000;
 
                     // Jeda selama waktu random tersebut
                     await new Promise((resolve) =>
